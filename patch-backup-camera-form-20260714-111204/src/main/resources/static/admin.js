@@ -3,16 +3,13 @@ const state = {
     cameras: []
 };
 
-const cameraForm = document.querySelector("#cameraForm");
 const customerForm = document.querySelector("#customerForm");
 const customerList = document.querySelector("#customerList");
 const cameraAssignments = document.querySelector("#cameraAssignments");
-const cameraMessage = document.querySelector("#cameraMessage");
 const customerMessage = document.querySelector("#customerMessage");
 const assignmentMessage = document.querySelector("#assignmentMessage");
 const customerItemTemplate = document.querySelector("#customerItemTemplate");
 const assignmentItemTemplate = document.querySelector("#assignmentItemTemplate");
-const cameraCustomer = document.querySelector("#cameraCustomer");
 
 async function apiFetch(url, options = {}) {
     const securedOptions = await window.WildlifeSession.withCsrf(options);
@@ -59,25 +56,6 @@ function renderCustomers() {
         fragment.querySelector(".customer-email").textContent = customer.email;
         fragment.querySelector(".customer-id").textContent = customer.id;
         customerList.append(fragment);
-    });
-}
-
-
-function renderCameraCustomerOptions() {
-    const selectedValue = cameraCustomer.value;
-    cameraCustomer.replaceChildren();
-
-    const empty = document.createElement("option");
-    empty.value = "";
-    empty.textContent = "Daha sonra atanacak";
-    cameraCustomer.append(empty);
-
-    state.customers.forEach(customer => {
-        const option = document.createElement("option");
-        option.value = customer.id;
-        option.textContent = `${customer.fullName} · ${customer.email}`;
-        option.selected = customer.id === selectedValue;
-        cameraCustomer.append(option);
     });
 }
 
@@ -170,50 +148,8 @@ async function loadData() {
     state.customers = await customerResponse.json();
     state.cameras = await cameraResponse.json();
     renderCustomers();
-    renderCameraCustomerOptions();
     renderAssignments();
 }
-
-cameraForm.addEventListener("submit", async event => {
-    event.preventDefault();
-    const submitButton = cameraForm.querySelector("button[type='submit']");
-    submitButton.disabled = true;
-    cameraMessage.textContent = "Fotokapan kaydı oluşturuluyor…";
-    cameraMessage.className = "form-message";
-
-    try {
-        const response = await apiFetch("/api/cameras", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                cameraCode: document.querySelector("#cameraCode").value.trim(),
-                name: document.querySelector("#cameraName").value.trim(),
-                location: document.querySelector("#cameraLocation").value.trim() || null,
-                jitsiRoomName: document.querySelector("#cameraRoom").value.trim() || null,
-                status: document.querySelector("#cameraStatus").value,
-                customerId: cameraCustomer.value || null,
-                description: document.querySelector("#cameraDescription").value.trim() || null,
-                active: document.querySelector("#cameraActive").checked
-            })
-        });
-
-        if (!response.ok) throw new Error(await readError(response));
-        const camera = await response.json();
-        state.cameras.push(camera);
-        state.cameras.sort((a, b) => a.name.localeCompare(b.name, "tr"));
-        cameraForm.reset();
-        document.querySelector("#cameraActive").checked = true;
-        renderCameraCustomerOptions();
-        renderAssignments();
-        cameraMessage.textContent = `${camera.cameraCode} başarıyla oluşturuldu.`;
-        cameraMessage.className = "form-message success";
-    } catch (error) {
-        cameraMessage.textContent = error.message || "Fotokapan oluşturulamadı.";
-        cameraMessage.className = "form-message error";
-    } finally {
-        submitButton.disabled = false;
-    }
-});
 
 customerForm.addEventListener("submit", async event => {
     event.preventDefault();
@@ -239,7 +175,6 @@ customerForm.addEventListener("submit", async event => {
         state.customers.sort((a, b) => a.fullName.localeCompare(b.fullName, "tr"));
         customerForm.reset();
         renderCustomers();
-        renderCameraCustomerOptions();
         renderAssignments();
         customerMessage.textContent = "Müşteri hesabı başarıyla oluşturuldu.";
         customerMessage.className = "form-message success";

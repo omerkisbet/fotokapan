@@ -40,76 +40,15 @@
             <p class="kicker">Müşteri ve fotokapan eşleştirmesi</p>
             <h1>Kim, hangi sahayı<br>görebilir?</h1>
             <p>
-                Yeni fotokapanları kaydedin, müşteri hesaplarını oluşturun ve her kamerayı yalnızca yetkili hesaba atayın.
+                Müşteri hesaplarını oluşturun ve her fotokapanı yalnızca yetkili hesaba atayın.
                 Müşteri oturumunda kamera, canlı yayın ve medya arşivi otomatik olarak filtrelenir.
             </p>
         </section>
 
         <section class="admin-grid">
-            <article class="admin-section admin-section-wide">
-                <header>
-                    <span>01</span>
-                    <div>
-                        <p class="kicker">Saha envanteri</p>
-                        <h2>Yeni fotokapan ekle</h2>
-                    </div>
-                </header>
-
-                <form id="cameraForm" class="admin-form camera-create-form">
-                    <div class="admin-form-columns">
-                        <label class="field">
-                            <span>Fotokapan kodu</span>
-                            <input id="cameraCode" type="text" maxlength="80" placeholder="CAM-TR-002" pattern="[A-Za-z0-9_-]+" required>
-                        </label>
-                        <label class="field">
-                            <span>Fotokapan adı</span>
-                            <input id="cameraName" type="text" maxlength="120" placeholder="Kuzey Ormanı Fotokapanı" required>
-                        </label>
-                        <label class="field">
-                            <span>Konum</span>
-                            <input id="cameraLocation" type="text" maxlength="180" placeholder="Samsun / Bölge 2">
-                        </label>
-                        <label class="field">
-                            <span>Jitsi oda adı</span>
-                            <input id="cameraRoom" type="text" maxlength="160" placeholder="Boş bırakılırsa otomatik oluşturulur" pattern="[A-Za-z0-9_-]*">
-                        </label>
-                        <label class="field">
-                            <span>Başlangıç durumu</span>
-                            <select id="cameraStatus">
-                                <option value="OFFLINE">Çevrimdışı</option>
-                                <option value="ONLINE">Çevrimiçi</option>
-                                <option value="MAINTENANCE">Bakımda</option>
-                            </select>
-                        </label>
-                        <label class="field">
-                            <span>Müşteri (isteğe bağlı)</span>
-                            <select id="cameraCustomer">
-                                <option value="">Daha sonra atanacak</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <label class="field">
-                        <span>Açıklama</span>
-                        <textarea id="cameraDescription" maxlength="500" placeholder="Kurulum alanı, cihaz notu veya bakım bilgisi"></textarea>
-                    </label>
-
-                    <label class="admin-check">
-                        <input id="cameraActive" type="checkbox" checked>
-                        <span>Fotokapan aktif olarak listelensin</span>
-                    </label>
-
-                    <button class="primary-action" type="submit">
-                        <span>Fotokapanı kaydet</span>
-                        <span aria-hidden="true">→</span>
-                    </button>
-                    <p id="cameraMessage" class="form-message" role="status" aria-live="polite"></p>
-                </form>
-            </article>
-
             <article class="admin-section">
                 <header>
-                    <span>02</span>
+                    <span>01</span>
                     <div>
                         <p class="kicker">Yeni hesap</p>
                         <h2>Müşteri oluştur</h2>
@@ -139,7 +78,7 @@
 
             <article class="admin-section">
                 <header>
-                    <span>03</span>
+                    <span>02</span>
                     <div>
                         <p class="kicker">Mevcut hesaplar</p>
                         <h2>Müşteriler</h2>
@@ -150,7 +89,7 @@
 
             <article class="admin-section admin-section-wide">
                 <header>
-                    <span>04</span>
+                    <span>03</span>
                     <div>
                         <p class="kicker">Kamera yetkileri</p>
                         <h2>Fotokapan atamaları</h2>
