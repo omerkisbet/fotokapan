@@ -1,0 +1,2475 @@
+diff -ruN wildlife_auth_patch_original/.env.example wildlife_auth_patch_work/.env.example
+--- wildlife_auth_patch_original/.env.example	2026-07-13 13:13:13.000000000 +0000
++++ wildlife_auth_patch_work/.env.example	2026-07-14 07:26:09.700699177 +0000
+@@ -1,3 +1,7 @@
+ MONGO_ROOT_USERNAME=wildlife
+ MONGO_ROOT_PASSWORD=change-this-password
+ MONGO_HOST_PORT=27019
++APP_ADMIN_EMAIL=admin@wildlife.local
++APP_ADMIN_PASSWORD=Admin123!
++APP_CUSTOMER_EMAIL=customer@wildlife.local
++APP_CUSTOMER_PASSWORD=Customer123!
+diff -ruN wildlife_auth_patch_original/compose.yaml wildlife_auth_patch_work/compose.yaml
+--- wildlife_auth_patch_original/compose.yaml	2026-07-13 13:13:13.000000000 +0000
++++ wildlife_auth_patch_work/compose.yaml	2026-07-14 07:26:09.700313579 +0000
+@@ -26,6 +26,10 @@
+       PORT: 8081
+       MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME:-wildlife}:${MONGO_ROOT_PASSWORD:-change-this-password}@mongodb:27017/wildlife_media?authSource=admin
+       MEDIA_STORAGE_PATH: /app/media-storage
++      APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@wildlife.local}
++      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-Admin123!}
++      APP_CUSTOMER_EMAIL: ${APP_CUSTOMER_EMAIL:-customer@wildlife.local}
++      APP_CUSTOMER_PASSWORD: ${APP_CUSTOMER_PASSWORD:-Customer123!}
+     ports:
+       - "8081:8081"
+     volumes:
+diff -ruN wildlife_auth_patch_original/pom.xml wildlife_auth_patch_work/pom.xml
+--- wildlife_auth_patch_original/pom.xml	2026-07-11 05:22:58.000000000 +0000
++++ wildlife_auth_patch_work/pom.xml	2026-07-14 07:25:58.893495402 +0000
+@@ -46,6 +46,10 @@
+             <groupId>org.springframework.boot</groupId>
+             <artifactId>spring-boot-starter-webmvc</artifactId>
+         </dependency>
++        <dependency>
++            <groupId>org.springframework.boot</groupId>
++            <artifactId>spring-boot-starter-security</artifactId>
++        </dependency>
+ 
+         <dependency>
+             <groupId>org.projectlombok</groupId>
+@@ -72,6 +76,11 @@
+             <artifactId>spring-boot-starter-webmvc-test</artifactId>
+             <scope>test</scope>
+         </dependency>
++        <dependency>
++            <groupId>org.springframework.security</groupId>
++            <artifactId>spring-security-test</artifactId>
++            <scope>test</scope>
++        </dependency>
+     </dependencies>
+ 
+     <build>
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java	2026-07-14 07:09:40.500204092 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java	2026-07-14 07:25:25.478626585 +0000
+@@ -1,42 +1,59 @@
+ package com.omuiotlab.wildlifemediaservice.config;
+ 
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
+ import com.omuiotlab.wildlifemediaservice.model.Camera;
+ import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++import com.omuiotlab.wildlifemediaservice.repository.AppUserRepository;
+ import com.omuiotlab.wildlifemediaservice.repository.CameraRepository;
++import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.boot.ApplicationArguments;
+ import org.springframework.boot.ApplicationRunner;
++import org.springframework.core.annotation.Order;
+ import org.springframework.stereotype.Component;
+ 
+ import java.time.Instant;
+ 
+ @Component
++@Order(2)
+ public class CameraDataInitializer implements ApplicationRunner {
+ 
+     private static final String DEMO_CAMERA_CODE = "CAM-TR-001";
+ 
+     private final CameraRepository cameraRepository;
++    private final AppUserRepository appUserRepository;
+ 
+-    public CameraDataInitializer(CameraRepository cameraRepository) {
++    @Value("${app.bootstrap.customer-email}")
++    private String customerEmail;
++
++    public CameraDataInitializer(
++            CameraRepository cameraRepository,
++            AppUserRepository appUserRepository
++    ) {
+         this.cameraRepository = cameraRepository;
++        this.appUserRepository = appUserRepository;
+     }
+ 
+     @Override
+     public void run(ApplicationArguments args) {
+-        if (cameraRepository.existsByCameraCodeIgnoreCase(DEMO_CAMERA_CODE)) {
+-            return;
+-        }
++        AppUser demoCustomer = appUserRepository.findByEmailIgnoreCase(customerEmail)
++                .orElse(null);
+ 
+-        Camera demoCamera = Camera.builder()
+-                .cameraCode(DEMO_CAMERA_CODE)
+-                .name("Demo Fotokapan")
+-                .location("Samsun · Test sahası")
+-                .jitsiRoomName("OMUIoTLabWildlife_CAMTR001")
+-                .status(CameraStatus.ONLINE)
+-                .description("Jitsi canlı gözlem prototipi için oluşturulan örnek fotokapan.")
+-                .active(true)
+-                .lastSeenAt(Instant.now())
+-                .build();
++        Camera camera = cameraRepository.findByCameraCodeIgnoreCase(DEMO_CAMERA_CODE)
++                .orElseGet(() -> Camera.builder()
++                        .cameraCode(DEMO_CAMERA_CODE)
++                        .name("Demo Fotokapan")
++                        .location("Samsun · Test sahası")
++                        .jitsiRoomName("OMUIoTLabWildlife_CAMTR001")
++                        .status(CameraStatus.ONLINE)
++                        .description("Jitsi canlı gözlem prototipi için oluşturulan örnek fotokapan.")
++                        .active(true)
++                        .lastSeenAt(Instant.now())
++                        .build());
++
++        if (demoCustomer != null && camera.getCustomerId() == null) {
++            camera.setCustomerId(demoCustomer.getId());
++        }
+ 
+-        cameraRepository.save(demoCamera);
++        cameraRepository.save(camera);
+     }
+ }
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/SecurityConfig.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/SecurityConfig.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/SecurityConfig.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/SecurityConfig.java	2026-07-14 07:30:48.524357662 +0000
+@@ -0,0 +1,72 @@
++package com.omuiotlab.wildlifemediaservice.config;
++
++import jakarta.servlet.http.HttpServletResponse;
++import org.springframework.context.annotation.Bean;
++import org.springframework.context.annotation.Configuration;
++import org.springframework.http.HttpMethod;
++import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
++import org.springframework.security.config.annotation.web.builders.HttpSecurity;
++import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
++import org.springframework.security.crypto.password.PasswordEncoder;
++import org.springframework.security.web.SecurityFilterChain;
++import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
++
++@Configuration
++@EnableMethodSecurity
++public class SecurityConfig {
++
++    @Bean
++    PasswordEncoder passwordEncoder() {
++        return new BCryptPasswordEncoder();
++    }
++
++    @Bean
++    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
++        CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
++        csrfRepository.setCookiePath("/");
++
++        http
++                .authorizeHttpRequests(authorize -> authorize
++                        .requestMatchers(
++                                "/login.html",
++                                "/login.js",
++                                "/styles.css",
++                                "/favicon.ico",
++                                "/error",
++                                "/actuator/health",
++                                "/api/auth/csrf"
++                        ).permitAll()
++                        .requestMatchers("/admin.html", "/admin.js", "/api/admin/**").hasRole("ADMIN")
++                        .requestMatchers(HttpMethod.POST, "/api/cameras/**").hasRole("ADMIN")
++                        .requestMatchers(HttpMethod.PATCH, "/api/cameras/**").hasRole("ADMIN")
++                        .requestMatchers(HttpMethod.DELETE, "/api/cameras/**").hasRole("ADMIN")
++                        .requestMatchers(HttpMethod.POST, "/api/media/**").hasRole("ADMIN")
++                        .requestMatchers(HttpMethod.DELETE, "/api/media/**").hasRole("ADMIN")
++                        .anyRequest().authenticated()
++                )
++                .formLogin(form -> form
++                        .loginPage("/login.html")
++                        .loginProcessingUrl("/login")
++                        .defaultSuccessUrl("/", true)
++                        .failureUrl("/login.html?error")
++                        .permitAll()
++                )
++                .logout(logout -> logout
++                        .logoutUrl("/logout")
++                        .logoutSuccessUrl("/login.html?logout")
++                        .permitAll()
++                )
++                .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository))
++                .exceptionHandling(exceptions -> exceptions
++                        .authenticationEntryPoint((request, response, exception) -> {
++                            if (request.getRequestURI().startsWith("/api/")) {
++                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
++                            } else {
++                                response.sendRedirect("/login.html");
++                            }
++                        })
++                );
++
++        return http.build();
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/UserDataInitializer.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/UserDataInitializer.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/UserDataInitializer.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/UserDataInitializer.java	2026-07-14 07:23:57.623170728 +0000
+@@ -0,0 +1,69 @@
++package com.omuiotlab.wildlifemediaservice.config;
++
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++import com.omuiotlab.wildlifemediaservice.model.UserRole;
++import com.omuiotlab.wildlifemediaservice.repository.AppUserRepository;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.boot.ApplicationArguments;
++import org.springframework.boot.ApplicationRunner;
++import org.springframework.core.annotation.Order;
++import org.springframework.security.crypto.password.PasswordEncoder;
++import org.springframework.stereotype.Component;
++
++import java.util.Locale;
++
++@Component
++@Order(1)
++public class UserDataInitializer implements ApplicationRunner {
++
++    private final AppUserRepository appUserRepository;
++    private final PasswordEncoder passwordEncoder;
++
++    @Value("${app.bootstrap.admin-email}")
++    private String adminEmail;
++
++    @Value("${app.bootstrap.admin-password}")
++    private String adminPassword;
++
++    @Value("${app.bootstrap.customer-email}")
++    private String customerEmail;
++
++    @Value("${app.bootstrap.customer-password}")
++    private String customerPassword;
++
++    public UserDataInitializer(
++            AppUserRepository appUserRepository,
++            PasswordEncoder passwordEncoder
++    ) {
++        this.appUserRepository = appUserRepository;
++        this.passwordEncoder = passwordEncoder;
++    }
++
++    @Override
++    public void run(ApplicationArguments args) {
++        createIfMissing("Sistem Yöneticisi", adminEmail, adminPassword, UserRole.ADMIN);
++        createIfMissing("Demo Müşteri", customerEmail, customerPassword, UserRole.CUSTOMER);
++    }
++
++    private void createIfMissing(
++            String fullName,
++            String rawEmail,
++            String rawPassword,
++            UserRole role
++    ) {
++        String email = rawEmail.trim().toLowerCase(Locale.ROOT);
++        if (appUserRepository.existsByEmailIgnoreCase(email)) {
++            return;
++        }
++
++        AppUser user = AppUser.builder()
++                .fullName(fullName)
++                .email(email)
++                .passwordHash(passwordEncoder.encode(rawPassword))
++                .role(role)
++                .active(true)
++                .build();
++
++        appUserRepository.save(user);
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AdminCustomerController.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AdminCustomerController.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AdminCustomerController.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AdminCustomerController.java	2026-07-14 07:24:09.543994743 +0000
+@@ -0,0 +1,37 @@
++package com.omuiotlab.wildlifemediaservice.controller;
++
++import com.omuiotlab.wildlifemediaservice.dto.CustomerCreateRequest;
++import com.omuiotlab.wildlifemediaservice.dto.CustomerResponse;
++import com.omuiotlab.wildlifemediaservice.service.AppUserService;
++import jakarta.validation.Valid;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/api/admin/customers")
++public class AdminCustomerController {
++
++    private final AppUserService appUserService;
++
++    public AdminCustomerController(AppUserService appUserService) {
++        this.appUserService = appUserService;
++    }
++
++    @GetMapping
++    public List<CustomerResponse> list() {
++        return appUserService.listCustomers();
++    }
++
++    @PostMapping
++    public ResponseEntity<CustomerResponse> create(
++            @Valid @RequestBody CustomerCreateRequest request
++    ) {
++        return ResponseEntity.status(201).body(appUserService.createCustomer(request));
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AuthController.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AuthController.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AuthController.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/AuthController.java	2026-07-14 07:24:09.537161049 +0000
+@@ -0,0 +1,35 @@
++package com.omuiotlab.wildlifemediaservice.controller;
++
++import com.omuiotlab.wildlifemediaservice.dto.CsrfResponse;
++import com.omuiotlab.wildlifemediaservice.dto.CurrentUserResponse;
++import com.omuiotlab.wildlifemediaservice.service.AppUserService;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.web.csrf.CsrfToken;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RestController;
++
++@RestController
++@RequestMapping("/api/auth")
++public class AuthController {
++
++    private final AppUserService appUserService;
++
++    public AuthController(AppUserService appUserService) {
++        this.appUserService = appUserService;
++    }
++
++    @GetMapping("/csrf")
++    public CsrfResponse csrf(CsrfToken token) {
++        return new CsrfResponse(
++                token.getHeaderName(),
++                token.getParameterName(),
++                token.getToken()
++        );
++    }
++
++    @GetMapping("/me")
++    public CurrentUserResponse me(Authentication authentication) {
++        return CurrentUserResponse.from(appUserService.getCurrentUser(authentication));
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java	2026-07-14 07:09:40.493711447 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java	2026-07-14 07:25:13.703997212 +0000
+@@ -1,11 +1,13 @@
+ package com.omuiotlab.wildlifemediaservice.controller;
+ 
+ import com.omuiotlab.wildlifemediaservice.dto.CameraCreateRequest;
++import com.omuiotlab.wildlifemediaservice.dto.CameraCustomerAssignRequest;
+ import com.omuiotlab.wildlifemediaservice.dto.CameraResponse;
+ import com.omuiotlab.wildlifemediaservice.dto.CameraStatusUpdateRequest;
+ import com.omuiotlab.wildlifemediaservice.service.CameraService;
+ import jakarta.validation.Valid;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+ import org.springframework.web.bind.annotation.PatchMapping;
+@@ -37,14 +39,18 @@
+ 
+     @GetMapping
+     public List<CameraResponse> list(
+-            @RequestParam(defaultValue = "false") boolean activeOnly
++            @RequestParam(defaultValue = "false") boolean activeOnly,
++            Authentication authentication
+     ) {
+-        return cameraService.list(activeOnly);
++        return cameraService.list(activeOnly, authentication);
+     }
+ 
+     @GetMapping("/{cameraCode}")
+-    public CameraResponse getByCameraCode(@PathVariable String cameraCode) {
+-        return cameraService.getByCameraCode(cameraCode);
++    public CameraResponse getByCameraCode(
++            @PathVariable String cameraCode,
++            Authentication authentication
++    ) {
++        return cameraService.getByCameraCode(cameraCode, authentication);
+     }
+ 
+     @PatchMapping("/{cameraCode}/status")
+@@ -55,6 +61,14 @@
+         return cameraService.updateStatus(cameraCode, request.status());
+     }
+ 
++    @PatchMapping("/{cameraCode}/customer")
++    public CameraResponse assignCustomer(
++            @PathVariable String cameraCode,
++            @Valid @RequestBody CameraCustomerAssignRequest request
++    ) {
++        return cameraService.assignCustomer(cameraCode, request.customerId());
++    }
++
+     @DeleteMapping("/{cameraCode}")
+     public ResponseEntity<Void> delete(@PathVariable String cameraCode) {
+         cameraService.delete(cameraCode);
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/MediaController.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/MediaController.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/MediaController.java	2026-07-13 11:53:34.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/MediaController.java	2026-07-14 07:25:13.711180670 +0000
+@@ -15,6 +15,7 @@
+ import org.springframework.http.ContentDisposition;
+ import org.springframework.http.HttpHeaders;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.security.core.Authentication;
+ import org.springframework.validation.annotation.Validated;
+ import org.springframework.web.bind.annotation.DeleteMapping;
+ import org.springframework.web.bind.annotation.GetMapping;
+@@ -63,7 +64,8 @@
+             @RequestParam(required = false) MediaType mediaType,
+             @RequestParam(required = false) String cameraId,
+             @RequestParam(defaultValue = "0") int page,
+-            @RequestParam(defaultValue = "12") int size
++            @RequestParam(defaultValue = "12") int size,
++            Authentication authentication
+     ) {
+         int safeSize = Math.min(Math.max(size, 1), 100);
+         int safePage = Math.max(page, 0);
+@@ -73,33 +75,49 @@
+                 Sort.by(Sort.Direction.DESC, "capturedAt")
+         );
+ 
+-        return mediaService.list(mediaType, cameraId, pageable);
++        return mediaService.list(mediaType, cameraId, pageable, authentication);
+     }
+ 
+     @GetMapping("/{id}")
+-    public MediaResponse getById(@PathVariable String id) {
+-        return mediaService.getById(id);
++    public MediaResponse getById(
++            @PathVariable String id,
++            Authentication authentication
++    ) {
++        return mediaService.getById(id, authentication);
+     }
+ 
+     @GetMapping("/{id}/content")
+-    public ResponseEntity<Resource> view(@PathVariable String id) {
+-        return buildResourceResponse(id, true);
++    public ResponseEntity<Resource> view(
++            @PathVariable String id,
++            Authentication authentication
++    ) {
++        return buildResourceResponse(id, true, authentication);
+     }
+ 
+     @GetMapping("/{id}/download")
+-    public ResponseEntity<Resource> download(@PathVariable String id) {
+-        return buildResourceResponse(id, false);
++    public ResponseEntity<Resource> download(
++            @PathVariable String id,
++            Authentication authentication
++    ) {
++        return buildResourceResponse(id, false, authentication);
+     }
+ 
+     @DeleteMapping("/{id}")
+-    public ResponseEntity<Void> delete(@PathVariable String id) {
+-        mediaService.delete(id);
++    public ResponseEntity<Void> delete(
++            @PathVariable String id,
++            Authentication authentication
++    ) {
++        mediaService.delete(id, authentication);
+         return ResponseEntity.noContent().build();
+     }
+ 
+-    private ResponseEntity<Resource> buildResourceResponse(String id, boolean inline) {
+-        MediaDocument document = mediaService.getDocument(id);
+-        Resource resource = mediaService.loadContent(id);
++    private ResponseEntity<Resource> buildResourceResponse(
++            String id,
++            boolean inline,
++            Authentication authentication
++    ) {
++        MediaDocument document = mediaService.getAccessibleDocument(id, authentication);
++        Resource resource = mediaService.loadContent(id, authentication);
+ 
+         ContentDisposition disposition = inline
+                 ? ContentDisposition.inline()
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCustomerAssignRequest.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCustomerAssignRequest.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCustomerAssignRequest.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCustomerAssignRequest.java	2026-07-14 07:23:25.920215157 +0000
+@@ -0,0 +1,9 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import jakarta.validation.constraints.NotBlank;
++
++public record CameraCustomerAssignRequest(
++        @NotBlank(message = "Müşteri kimliği boş olamaz.")
++        String customerId
++) {
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CsrfResponse.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CsrfResponse.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CsrfResponse.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CsrfResponse.java	2026-07-14 07:23:25.926833413 +0000
+@@ -0,0 +1,8 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++public record CsrfResponse(
++        String headerName,
++        String parameterName,
++        String token
++) {
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CurrentUserResponse.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CurrentUserResponse.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CurrentUserResponse.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CurrentUserResponse.java	2026-07-14 07:23:25.913102184 +0000
+@@ -0,0 +1,20 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++import com.omuiotlab.wildlifemediaservice.model.UserRole;
++
++public record CurrentUserResponse(
++        String id,
++        String fullName,
++        String email,
++        UserRole role
++) {
++    public static CurrentUserResponse from(AppUser user) {
++        return new CurrentUserResponse(
++                user.getId(),
++                user.getFullName(),
++                user.getEmail(),
++                user.getRole()
++        );
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerCreateRequest.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerCreateRequest.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerCreateRequest.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerCreateRequest.java	2026-07-14 07:23:25.895045315 +0000
+@@ -0,0 +1,21 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import jakarta.validation.constraints.Email;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Size;
++
++public record CustomerCreateRequest(
++        @NotBlank(message = "Müşteri adı boş olamaz.")
++        @Size(max = 120, message = "Müşteri adı en fazla 120 karakter olabilir.")
++        String fullName,
++
++        @NotBlank(message = "E-posta adresi boş olamaz.")
++        @Email(message = "Geçerli bir e-posta adresi girin.")
++        @Size(max = 180, message = "E-posta adresi en fazla 180 karakter olabilir.")
++        String email,
++
++        @NotBlank(message = "Parola boş olamaz.")
++        @Size(min = 8, max = 72, message = "Parola 8 ile 72 karakter arasında olmalıdır.")
++        String password
++) {
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerResponse.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerResponse.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerResponse.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CustomerResponse.java	2026-07-14 07:23:25.901734074 +0000
+@@ -0,0 +1,23 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++
++import java.time.Instant;
++
++public record CustomerResponse(
++        String id,
++        String fullName,
++        String email,
++        boolean active,
++        Instant createdAt
++) {
++    public static CustomerResponse from(AppUser user) {
++        return new CustomerResponse(
++                user.getId(),
++                user.getFullName(),
++                user.getEmail(),
++                user.isActive(),
++                user.getCreatedAt()
++        );
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateEmailException.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateEmailException.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateEmailException.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateEmailException.java	2026-07-14 07:23:25.941799770 +0000
+@@ -0,0 +1,7 @@
++package com.omuiotlab.wildlifemediaservice.exception;
++
++public class DuplicateEmailException extends RuntimeException {
++    public DuplicateEmailException(String email) {
++        super("Bu e-posta adresi zaten kayıtlı: " + email);
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java	2026-07-14 07:09:54.617117397 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java	2026-07-14 07:25:48.805727843 +0000
+@@ -6,6 +6,7 @@
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
+ import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.MissingServletRequestParameterException;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+@@ -19,7 +20,7 @@
+ @RestControllerAdvice
+ public class GlobalExceptionHandler {
+ 
+-    @ExceptionHandler({MediaNotFoundException.class, CameraNotFoundException.class})
++    @ExceptionHandler({MediaNotFoundException.class, CameraNotFoundException.class, UserNotFoundException.class})
+     public ResponseEntity<ApiErrorResponse> handleNotFound(
+             RuntimeException exception,
+             HttpServletRequest request
+@@ -27,9 +28,9 @@
+         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+     }
+ 
+-    @ExceptionHandler(DuplicateCameraCodeException.class)
++    @ExceptionHandler({DuplicateCameraCodeException.class, DuplicateEmailException.class})
+     public ResponseEntity<ApiErrorResponse> handleConflict(
+-            DuplicateCameraCodeException exception,
++            RuntimeException exception,
+             HttpServletRequest request
+     ) {
+         return build(HttpStatus.CONFLICT, exception.getMessage(), request);
+@@ -71,6 +72,15 @@
+         return build(HttpStatus.BAD_REQUEST, message, request);
+     }
+ 
++
++    @ExceptionHandler(AccessDeniedException.class)
++    public ResponseEntity<ApiErrorResponse> handleAccessDenied(
++            AccessDeniedException exception,
++            HttpServletRequest request
++    ) {
++        return build(HttpStatus.FORBIDDEN, exception.getMessage(), request);
++    }
++
+     @ExceptionHandler(MaxUploadSizeExceededException.class)
+     public ResponseEntity<ApiErrorResponse> handleMaxUploadSize(
+             MaxUploadSizeExceededException exception,
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/UserNotFoundException.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/UserNotFoundException.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/UserNotFoundException.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/UserNotFoundException.java	2026-07-14 07:23:25.934200631 +0000
+@@ -0,0 +1,7 @@
++package com.omuiotlab.wildlifemediaservice.exception;
++
++public class UserNotFoundException extends RuntimeException {
++    public UserNotFoundException(String identifier) {
++        super("Kullanıcı bulunamadı: " + identifier);
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/AppUser.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/AppUser.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/AppUser.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/AppUser.java	2026-07-14 07:23:25.881611172 +0000
+@@ -0,0 +1,43 @@
++package com.omuiotlab.wildlifemediaservice.model;
++
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++import org.springframework.data.annotation.CreatedDate;
++import org.springframework.data.annotation.Id;
++import org.springframework.data.annotation.LastModifiedDate;
++import org.springframework.data.mongodb.core.index.Indexed;
++import org.springframework.data.mongodb.core.mapping.Document;
++
++import java.time.Instant;
++
++@Getter
++@Setter
++@Builder
++@NoArgsConstructor
++@AllArgsConstructor
++@Document(collection = "users")
++public class AppUser {
++
++    @Id
++    private String id;
++
++    private String fullName;
++
++    @Indexed(unique = true)
++    private String email;
++
++    private String passwordHash;
++    private UserRole role;
++
++    @Builder.Default
++    private boolean active = true;
++
++    @CreatedDate
++    private Instant createdAt;
++
++    @LastModifiedDate
++    private Instant updatedAt;
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/UserRole.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/UserRole.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/UserRole.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/UserRole.java	2026-07-14 07:23:25.875606195 +0000
+@@ -0,0 +1,6 @@
++package com.omuiotlab.wildlifemediaservice.model;
++
++public enum UserRole {
++    ADMIN,
++    CUSTOMER
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/AppUserRepository.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/AppUserRepository.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/AppUserRepository.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/AppUserRepository.java	2026-07-14 07:23:25.887891446 +0000
+@@ -0,0 +1,17 @@
++package com.omuiotlab.wildlifemediaservice.repository;
++
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++import com.omuiotlab.wildlifemediaservice.model.UserRole;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import java.util.List;
++import java.util.Optional;
++
++public interface AppUserRepository extends MongoRepository<AppUser, String> {
++
++    Optional<AppUser> findByEmailIgnoreCase(String email);
++
++    boolean existsByEmailIgnoreCase(String email);
++
++    List<AppUser> findByRoleOrderByFullNameAsc(UserRole role);
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java	2026-07-14 07:09:40.464383953 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java	2026-07-14 07:24:37.628792518 +0000
+@@ -10,9 +10,15 @@
+ 
+     Optional<Camera> findByCameraCodeIgnoreCase(String cameraCode);
+ 
++    Optional<Camera> findByCameraCodeIgnoreCaseAndCustomerId(String cameraCode, String customerId);
++
+     boolean existsByCameraCodeIgnoreCase(String cameraCode);
+ 
+     List<Camera> findAllByOrderByNameAsc();
+ 
+     List<Camera> findByActiveTrueOrderByNameAsc();
++
++    List<Camera> findByCustomerIdOrderByNameAsc(String customerId);
++
++    List<Camera> findByCustomerIdAndActiveTrueOrderByNameAsc(String customerId);
+ }
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/MediaRepository.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/MediaRepository.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/MediaRepository.java	2026-07-13 11:53:34.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/MediaRepository.java	2026-07-14 07:24:37.636074090 +0000
+@@ -6,6 +6,8 @@
+ import org.springframework.data.domain.Pageable;
+ import org.springframework.data.mongodb.repository.MongoRepository;
+ 
++import java.util.Collection;
++
+ public interface MediaRepository extends MongoRepository<MediaDocument, String> {
+ 
+     Page<MediaDocument> findByMediaType(MediaType mediaType, Pageable pageable);
+@@ -18,5 +20,13 @@
+             Pageable pageable
+     );
+ 
++    Page<MediaDocument> findByCameraIdIn(Collection<String> cameraIds, Pageable pageable);
++
++    Page<MediaDocument> findByMediaTypeAndCameraIdIn(
++            MediaType mediaType,
++            Collection<String> cameraIds,
++            Pageable pageable
++    );
++
+     boolean existsByStorageKey(String storageKey);
+ }
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/AppUserService.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/AppUserService.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/AppUserService.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/AppUserService.java	2026-07-14 07:23:57.603860965 +0000
+@@ -0,0 +1,88 @@
++package com.omuiotlab.wildlifemediaservice.service;
++
++import com.omuiotlab.wildlifemediaservice.dto.CustomerCreateRequest;
++import com.omuiotlab.wildlifemediaservice.dto.CustomerResponse;
++import com.omuiotlab.wildlifemediaservice.exception.DuplicateEmailException;
++import com.omuiotlab.wildlifemediaservice.exception.UserNotFoundException;
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++import com.omuiotlab.wildlifemediaservice.model.UserRole;
++import com.omuiotlab.wildlifemediaservice.repository.AppUserRepository;
++import org.springframework.security.core.Authentication;
++import org.springframework.security.crypto.password.PasswordEncoder;
++import org.springframework.stereotype.Service;
++
++import java.util.List;
++import java.util.Locale;
++
++@Service
++public class AppUserService {
++
++    private final AppUserRepository appUserRepository;
++    private final PasswordEncoder passwordEncoder;
++
++    public AppUserService(
++            AppUserRepository appUserRepository,
++            PasswordEncoder passwordEncoder
++    ) {
++        this.appUserRepository = appUserRepository;
++        this.passwordEncoder = passwordEncoder;
++    }
++
++    public CustomerResponse createCustomer(CustomerCreateRequest request) {
++        String email = normalizeEmail(request.email());
++        if (appUserRepository.existsByEmailIgnoreCase(email)) {
++            throw new DuplicateEmailException(email);
++        }
++
++        AppUser customer = AppUser.builder()
++                .fullName(request.fullName().trim())
++                .email(email)
++                .passwordHash(passwordEncoder.encode(request.password()))
++                .role(UserRole.CUSTOMER)
++                .active(true)
++                .build();
++
++        return CustomerResponse.from(appUserRepository.save(customer));
++    }
++
++    public List<CustomerResponse> listCustomers() {
++        return appUserRepository.findByRoleOrderByFullNameAsc(UserRole.CUSTOMER)
++                .stream()
++                .map(CustomerResponse::from)
++                .toList();
++    }
++
++    public AppUser getCurrentUser(Authentication authentication) {
++        if (authentication == null || !authentication.isAuthenticated()) {
++            throw new UserNotFoundException("oturum");
++        }
++        return getByEmail(authentication.getName());
++    }
++
++    public AppUser getByEmail(String email) {
++        String normalizedEmail = normalizeEmail(email);
++        return appUserRepository.findByEmailIgnoreCase(normalizedEmail)
++                .orElseThrow(() -> new UserNotFoundException(normalizedEmail));
++    }
++
++    public AppUser getCustomerById(String customerId) {
++        AppUser user = appUserRepository.findById(customerId)
++                .orElseThrow(() -> new UserNotFoundException(customerId));
++
++        if (user.getRole() != UserRole.CUSTOMER) {
++            throw new IllegalArgumentException("Seçilen kullanıcı müşteri rolünde değil.");
++        }
++        return user;
++    }
++
++    public boolean isAdmin(AppUser user) {
++        return user.getRole() == UserRole.ADMIN;
++    }
++
++    private String normalizeEmail(String value) {
++        if (value == null || value.isBlank()) {
++            throw new IllegalArgumentException("E-posta adresi boş olamaz.");
++        }
++        return value.trim().toLowerCase(Locale.ROOT);
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java	2026-07-14 07:09:40.486578780 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java	2026-07-14 07:24:37.644752321 +0000
+@@ -4,9 +4,12 @@
+ import com.omuiotlab.wildlifemediaservice.dto.CameraResponse;
+ import com.omuiotlab.wildlifemediaservice.exception.CameraNotFoundException;
+ import com.omuiotlab.wildlifemediaservice.exception.DuplicateCameraCodeException;
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
+ import com.omuiotlab.wildlifemediaservice.model.Camera;
+ import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
+ import com.omuiotlab.wildlifemediaservice.repository.CameraRepository;
++import org.springframework.security.access.AccessDeniedException;
++import org.springframework.security.core.Authentication;
+ import org.springframework.stereotype.Service;
+ 
+ import java.time.Instant;
+@@ -19,9 +22,14 @@
+     private static final String DEFAULT_ROOM_PREFIX = "OMUIoTLabWildlife_";
+ 
+     private final CameraRepository cameraRepository;
++    private final AppUserService appUserService;
+ 
+-    public CameraService(CameraRepository cameraRepository) {
++    public CameraService(
++            CameraRepository cameraRepository,
++            AppUserService appUserService
++    ) {
+         this.cameraRepository = cameraRepository;
++        this.appUserService = appUserService;
+     }
+ 
+     public CameraResponse create(CameraCreateRequest request) {
+@@ -35,13 +43,18 @@
+                 ? CameraStatus.OFFLINE
+                 : request.status();
+ 
++        String customerId = normalizeOptionalText(request.customerId());
++        if (customerId != null) {
++            appUserService.getCustomerById(customerId);
++        }
++
+         Camera camera = Camera.builder()
+                 .cameraCode(cameraCode)
+                 .name(request.name().trim())
+                 .location(normalizeOptionalText(request.location()))
+                 .jitsiRoomName(resolveRoomName(request.jitsiRoomName(), cameraCode))
+                 .status(status)
+-                .customerId(normalizeOptionalText(request.customerId()))
++                .customerId(customerId)
+                 .description(normalizeOptionalText(request.description()))
+                 .active(request.active() == null || request.active())
+                 .lastSeenAt(status == CameraStatus.ONLINE ? Instant.now() : null)
+@@ -50,18 +63,30 @@
+         return CameraResponse.from(cameraRepository.save(camera));
+     }
+ 
+-    public List<CameraResponse> list(boolean activeOnly) {
+-        List<Camera> cameras = activeOnly
+-                ? cameraRepository.findByActiveTrueOrderByNameAsc()
+-                : cameraRepository.findAllByOrderByNameAsc();
++    public List<CameraResponse> list(boolean activeOnly, Authentication authentication) {
++        AppUser currentUser = appUserService.getCurrentUser(authentication);
++        List<Camera> cameras;
++
++        if (appUserService.isAdmin(currentUser)) {
++            cameras = activeOnly
++                    ? cameraRepository.findByActiveTrueOrderByNameAsc()
++                    : cameraRepository.findAllByOrderByNameAsc();
++        } else {
++            cameras = activeOnly
++                    ? cameraRepository.findByCustomerIdAndActiveTrueOrderByNameAsc(currentUser.getId())
++                    : cameraRepository.findByCustomerIdOrderByNameAsc(currentUser.getId());
++        }
+ 
+         return cameras.stream()
+                 .map(CameraResponse::from)
+                 .toList();
+     }
+ 
+-    public CameraResponse getByCameraCode(String cameraCode) {
+-        return CameraResponse.from(getCamera(cameraCode));
++    public CameraResponse getByCameraCode(
++            String cameraCode,
++            Authentication authentication
++    ) {
++        return CameraResponse.from(getAccessibleCamera(cameraCode, authentication));
+     }
+ 
+     public CameraResponse updateStatus(String cameraCode, CameraStatus status) {
+@@ -75,10 +100,50 @@
+         return CameraResponse.from(cameraRepository.save(camera));
+     }
+ 
++    public CameraResponse assignCustomer(String cameraCode, String customerId) {
++        Camera camera = getCamera(cameraCode);
++        AppUser customer = appUserService.getCustomerById(customerId);
++        camera.setCustomerId(customer.getId());
++        return CameraResponse.from(cameraRepository.save(camera));
++    }
++
+     public void delete(String cameraCode) {
+         cameraRepository.delete(getCamera(cameraCode));
+     }
+ 
++    public Camera getAccessibleCamera(
++            String cameraCode,
++            Authentication authentication
++    ) {
++        AppUser currentUser = appUserService.getCurrentUser(authentication);
++        Camera camera = getCamera(cameraCode);
++
++        if (appUserService.isAdmin(currentUser)) {
++            return camera;
++        }
++
++        if (camera.getCustomerId() == null || !camera.getCustomerId().equals(currentUser.getId())) {
++            throw new AccessDeniedException("Bu fotokapana erişim yetkiniz yok.");
++        }
++
++        return camera;
++    }
++
++    public List<String> accessibleCameraCodes(Authentication authentication) {
++        AppUser currentUser = appUserService.getCurrentUser(authentication);
++        List<Camera> cameras = appUserService.isAdmin(currentUser)
++                ? cameraRepository.findAllByOrderByNameAsc()
++                : cameraRepository.findByCustomerIdOrderByNameAsc(currentUser.getId());
++
++        return cameras.stream()
++                .map(Camera::getCameraCode)
++                .toList();
++    }
++
++    public boolean isAdmin(Authentication authentication) {
++        return appUserService.isAdmin(appUserService.getCurrentUser(authentication));
++    }
++
+     public Camera getCamera(String cameraCode) {
+         String normalizedCode = normalizeCameraCode(cameraCode);
+         return cameraRepository.findByCameraCodeIgnoreCase(normalizedCode)
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/MediaService.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/MediaService.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/MediaService.java	2026-07-13 11:53:34.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/MediaService.java	2026-07-14 07:25:13.696696841 +0000
+@@ -10,23 +10,28 @@
+ import org.springframework.core.io.Resource;
+ import org.springframework.data.domain.Page;
+ import org.springframework.data.domain.Pageable;
++import org.springframework.security.core.Authentication;
+ import org.springframework.stereotype.Service;
+ import org.springframework.web.multipart.MultipartFile;
+ 
+ import java.time.Instant;
++import java.util.List;
+ 
+ @Service
+ public class MediaService {
+ 
+     private final MediaRepository mediaRepository;
+     private final MediaStorageService mediaStorageService;
++    private final CameraService cameraService;
+ 
+     public MediaService(
+             MediaRepository mediaRepository,
+-            MediaStorageService mediaStorageService
++            MediaStorageService mediaStorageService,
++            CameraService cameraService
+     ) {
+         this.mediaRepository = mediaRepository;
+         this.mediaStorageService = mediaStorageService;
++        this.cameraService = cameraService;
+     }
+ 
+     public MediaResponse upload(
+@@ -35,6 +40,7 @@
+             Instant capturedAt,
+             String description
+     ) {
++        cameraService.getCamera(cameraId);
+         StoredMediaFile storedFile = mediaStorageService.store(file);
+ 
+         MediaDocument document = MediaDocument.builder()
+@@ -44,7 +50,7 @@
+                 .contentType(storedFile.contentType())
+                 .size(storedFile.size())
+                 .mediaType(storedFile.mediaType())
+-                .cameraId(cameraId.trim())
++                .cameraId(cameraId.trim().toUpperCase(java.util.Locale.ROOT))
+                 .capturedAt(capturedAt == null ? Instant.now() : capturedAt)
+                 .description(normalizeOptionalText(description))
+                 .build();
+@@ -60,30 +66,51 @@
+     public Page<MediaResponse> list(
+             MediaType mediaType,
+             String cameraId,
+-            Pageable pageable
++            Pageable pageable,
++            Authentication authentication
+     ) {
+         String normalizedCameraId = normalizeOptionalText(cameraId);
+         Page<MediaDocument> result;
+ 
+-        if (mediaType != null && normalizedCameraId != null) {
+-            result = mediaRepository.findByMediaTypeAndCameraIdIgnoreCase(
+-                    mediaType,
+-                    normalizedCameraId,
+-                    pageable
+-            );
+-        } else if (mediaType != null) {
+-            result = mediaRepository.findByMediaType(mediaType, pageable);
+-        } else if (normalizedCameraId != null) {
+-            result = mediaRepository.findByCameraIdIgnoreCase(normalizedCameraId, pageable);
++        if (normalizedCameraId != null) {
++            cameraService.getAccessibleCamera(normalizedCameraId, authentication);
++            result = mediaType == null
++                    ? mediaRepository.findByCameraIdIgnoreCase(normalizedCameraId, pageable)
++                    : mediaRepository.findByMediaTypeAndCameraIdIgnoreCase(
++                            mediaType,
++                            normalizedCameraId,
++                            pageable
++                    );
++        } else if (cameraService.isAdmin(authentication)) {
++            result = mediaType == null
++                    ? mediaRepository.findAll(pageable)
++                    : mediaRepository.findByMediaType(mediaType, pageable);
+         } else {
+-            result = mediaRepository.findAll(pageable);
++            List<String> accessibleCodes = cameraService.accessibleCameraCodes(authentication);
++            if (accessibleCodes.isEmpty()) {
++                result = Page.empty(pageable);
++            } else {
++                result = mediaType == null
++                        ? mediaRepository.findByCameraIdIn(accessibleCodes, pageable)
++                        : mediaRepository.findByMediaTypeAndCameraIdIn(
++                                mediaType,
++                                accessibleCodes,
++                                pageable
++                        );
++            }
+         }
+ 
+         return result.map(MediaResponse::from);
+     }
+ 
+-    public MediaResponse getById(String id) {
+-        return MediaResponse.from(getDocument(id));
++    public MediaResponse getById(String id, Authentication authentication) {
++        return MediaResponse.from(getAccessibleDocument(id, authentication));
++    }
++
++    public MediaDocument getAccessibleDocument(String id, Authentication authentication) {
++        MediaDocument document = getDocument(id);
++        cameraService.getAccessibleCamera(document.getCameraId(), authentication);
++        return document;
+     }
+ 
+     public MediaDocument getDocument(String id) {
+@@ -91,13 +118,13 @@
+                 .orElseThrow(() -> new MediaNotFoundException(id));
+     }
+ 
+-    public Resource loadContent(String id) {
+-        MediaDocument document = getDocument(id);
++    public Resource loadContent(String id, Authentication authentication) {
++        MediaDocument document = getAccessibleDocument(id, authentication);
+         return mediaStorageService.loadAsResource(document.getStorageKey());
+     }
+ 
+-    public void delete(String id) {
+-        MediaDocument document = getDocument(id);
++    public void delete(String id, Authentication authentication) {
++        MediaDocument document = getAccessibleDocument(id, authentication);
+         mediaStorageService.delete(document.getStorageKey());
+         mediaRepository.delete(document);
+     }
+diff -ruN wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/MongoUserDetailsService.java wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/MongoUserDetailsService.java
+--- wildlife_auth_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/MongoUserDetailsService.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/MongoUserDetailsService.java	2026-07-14 07:23:57.610453472 +0000
+@@ -0,0 +1,31 @@
++package com.omuiotlab.wildlifemediaservice.service;
++
++import com.omuiotlab.wildlifemediaservice.model.AppUser;
++import com.omuiotlab.wildlifemediaservice.repository.AppUserRepository;
++import org.springframework.security.core.userdetails.User;
++import org.springframework.security.core.userdetails.UserDetails;
++import org.springframework.security.core.userdetails.UserDetailsService;
++import org.springframework.security.core.userdetails.UsernameNotFoundException;
++import org.springframework.stereotype.Service;
++
++@Service
++public class MongoUserDetailsService implements UserDetailsService {
++
++    private final AppUserRepository appUserRepository;
++
++    public MongoUserDetailsService(AppUserRepository appUserRepository) {
++        this.appUserRepository = appUserRepository;
++    }
++
++    @Override
++    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
++        AppUser user = appUserRepository.findByEmailIgnoreCase(username)
++                .orElseThrow(() -> new UsernameNotFoundException("Kullanıcı bulunamadı."));
++
++        return User.withUsername(user.getEmail())
++                .password(user.getPasswordHash())
++                .roles(user.getRole().name())
++                .disabled(!user.isActive())
++                .build();
++    }
++}
+diff -ruN wildlife_auth_patch_original/src/main/resources/application.properties wildlife_auth_patch_work/src/main/resources/application.properties
+--- wildlife_auth_patch_original/src/main/resources/application.properties	2026-07-13 13:23:13.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/application.properties	2026-07-14 07:26:08.666083637 +0000
+@@ -14,3 +14,8 @@
+ management.endpoint.health.probes.enabled=true
+ management.health.livenessstate.enabled=true
+ management.health.readinessstate.enabled=true
++
++app.bootstrap.admin-email=${APP_ADMIN_EMAIL:admin@wildlife.local}
++app.bootstrap.admin-password=${APP_ADMIN_PASSWORD:Admin123!}
++app.bootstrap.customer-email=${APP_CUSTOMER_EMAIL:customer@wildlife.local}
++app.bootstrap.customer-password=${APP_CUSTOMER_PASSWORD:Customer123!}
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/admin.html wildlife_auth_patch_work/src/main/resources/static/admin.html
+--- wildlife_auth_patch_original/src/main/resources/static/admin.html	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/admin.html	2026-07-14 07:31:46.298082978 +0000
+@@ -0,0 +1,138 @@
++<!doctype html>
++<html lang="tr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <meta name="description" content="Wildlife Archive müşteri ve fotokapan erişim yönetimi.">
++    <title>Yönetim · Wildlife Archive</title>
++    <link rel="stylesheet" href="/styles.css">
++</head>
++<body class="admin-page">
++<div class="page-shell">
++    <header class="masthead">
++        <a class="brand" href="/" aria-label="Fotokapan Arşivi ana sayfa">
++            <span class="brand-mark" aria-hidden="true">WA</span>
++            <span>
++                <strong>Wildlife Archive</strong>
++                <small>OMÜ IoT Lab</small>
++            </span>
++        </a>
++
++        <div class="masthead-actions">
++            <nav class="primary-nav" aria-label="Ana navigasyon">
++                <a class="nav-link" href="/">Arşiv</a>
++                <a class="nav-link" href="/live.html">Canlı gözlem</a>
++                <a class="nav-link is-active" href="/admin.html">Yönetim</a>
++            </nav>
++            <div class="session-account" aria-label="Oturum bilgisi">
++                <span>
++                    <strong data-session-name>Hesap yükleniyor</strong>
++                    <small data-session-role>—</small>
++                </span>
++                <button class="session-logout" type="button" data-logout>Çıkış</button>
++            </div>
++        </div>
++    </header>
++
++    <main class="admin-workspace">
++        <section class="admin-intro">
++            <div class="section-number">05 / ERİŞİM YÖNETİMİ</div>
++            <p class="kicker">Müşteri ve fotokapan eşleştirmesi</p>
++            <h1>Kim, hangi sahayı<br>görebilir?</h1>
++            <p>
++                Müşteri hesaplarını oluşturun ve her fotokapanı yalnızca yetkili hesaba atayın.
++                Müşteri oturumunda kamera, canlı yayın ve medya arşivi otomatik olarak filtrelenir.
++            </p>
++        </section>
++
++        <section class="admin-grid">
++            <article class="admin-section">
++                <header>
++                    <span>01</span>
++                    <div>
++                        <p class="kicker">Yeni hesap</p>
++                        <h2>Müşteri oluştur</h2>
++                    </div>
++                </header>
++
++                <form id="customerForm" class="admin-form">
++                    <label class="field">
++                        <span>Ad soyad / kurum</span>
++                        <input id="customerName" type="text" maxlength="120" required>
++                    </label>
++                    <label class="field">
++                        <span>E-posta</span>
++                        <input id="customerEmail" type="email" maxlength="180" required>
++                    </label>
++                    <label class="field">
++                        <span>İlk parola</span>
++                        <input id="customerPassword" type="password" minlength="8" maxlength="72" required>
++                    </label>
++                    <button class="primary-action" type="submit">
++                        <span>Müşteriyi oluştur</span>
++                        <span aria-hidden="true">→</span>
++                    </button>
++                    <p id="customerMessage" class="form-message" role="status" aria-live="polite"></p>
++                </form>
++            </article>
++
++            <article class="admin-section">
++                <header>
++                    <span>02</span>
++                    <div>
++                        <p class="kicker">Mevcut hesaplar</p>
++                        <h2>Müşteriler</h2>
++                    </div>
++                </header>
++                <div id="customerList" class="admin-list" aria-live="polite"></div>
++            </article>
++
++            <article class="admin-section admin-section-wide">
++                <header>
++                    <span>03</span>
++                    <div>
++                        <p class="kicker">Kamera yetkileri</p>
++                        <h2>Fotokapan atamaları</h2>
++                    </div>
++                </header>
++                <div id="cameraAssignments" class="assignment-list" aria-live="polite"></div>
++                <p id="assignmentMessage" class="form-message" role="status" aria-live="polite"></p>
++            </article>
++        </section>
++    </main>
++
++    <footer class="site-footer">
++        <span>OMÜ Sistemler ve Ağ Araştırma Laboratuvarı</span>
++        <span>Müşteri erişim yönetimi · 2026</span>
++    </footer>
++</div>
++
++<template id="customerItemTemplate">
++    <article class="admin-list-row">
++        <div>
++            <strong class="customer-name"></strong>
++            <span class="customer-email"></span>
++        </div>
++        <code class="customer-id"></code>
++    </article>
++</template>
++
++<template id="assignmentItemTemplate">
++    <article class="assignment-row">
++        <div>
++            <span class="assignment-code"></span>
++            <strong class="assignment-name"></strong>
++            <small class="assignment-location"></small>
++        </div>
++        <label>
++            <span>Müşteri</span>
++            <select class="assignment-select"></select>
++        </label>
++        <button class="filter-action assignment-save" type="button">Atamayı kaydet</button>
++    </article>
++</template>
++
++<script src="/session.js"></script>
++<script src="/admin.js"></script>
++</body>
++</html>
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/admin.js wildlife_auth_patch_work/src/main/resources/static/admin.js
+--- wildlife_auth_patch_original/src/main/resources/static/admin.js	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/admin.js	2026-07-14 07:31:46.309299238 +0000
+@@ -0,0 +1,206 @@
++const state = {
++    customers: [],
++    cameras: []
++};
++
++const customerForm = document.querySelector("#customerForm");
++const customerList = document.querySelector("#customerList");
++const cameraAssignments = document.querySelector("#cameraAssignments");
++const customerMessage = document.querySelector("#customerMessage");
++const assignmentMessage = document.querySelector("#assignmentMessage");
++const customerItemTemplate = document.querySelector("#customerItemTemplate");
++const assignmentItemTemplate = document.querySelector("#assignmentItemTemplate");
++
++async function apiFetch(url, options = {}) {
++    const securedOptions = await window.WildlifeSession.withCsrf(options);
++    const response = await fetch(url, {
++        credentials: "same-origin",
++        cache: "no-store",
++        ...securedOptions
++    });
++
++    if (response.status === 401) {
++        window.location.replace("/login.html");
++    }
++
++    if (response.status === 403) {
++        window.location.replace("/");
++    }
++
++    return response;
++}
++
++async function readError(response) {
++    try {
++        const body = await response.json();
++        return body.message || body.detail || "İşlem başarısız oldu.";
++    } catch {
++        return "İşlem başarısız oldu.";
++    }
++}
++
++function renderCustomers() {
++    customerList.replaceChildren();
++
++    if (state.customers.length === 0) {
++        const empty = document.createElement("p");
++        empty.className = "admin-empty";
++        empty.textContent = "Henüz müşteri hesabı bulunmuyor.";
++        customerList.append(empty);
++        return;
++    }
++
++    state.customers.forEach(customer => {
++        const fragment = customerItemTemplate.content.cloneNode(true);
++        fragment.querySelector(".customer-name").textContent = customer.fullName;
++        fragment.querySelector(".customer-email").textContent = customer.email;
++        fragment.querySelector(".customer-id").textContent = customer.id;
++        customerList.append(fragment);
++    });
++}
++
++function createCustomerOptions(selectedCustomerId) {
++    const fragment = document.createDocumentFragment();
++
++    const empty = document.createElement("option");
++    empty.value = "";
++    empty.textContent = "Müşteri seçin";
++    fragment.append(empty);
++
++    state.customers.forEach(customer => {
++        const option = document.createElement("option");
++        option.value = customer.id;
++        option.textContent = `${customer.fullName} · ${customer.email}`;
++        option.selected = customer.id === selectedCustomerId;
++        fragment.append(option);
++    });
++
++    return fragment;
++}
++
++function renderAssignments() {
++    cameraAssignments.replaceChildren();
++
++    if (state.cameras.length === 0) {
++        const empty = document.createElement("p");
++        empty.className = "admin-empty";
++        empty.textContent = "Henüz fotokapan kaydı bulunmuyor.";
++        cameraAssignments.append(empty);
++        return;
++    }
++
++    state.cameras.forEach(camera => {
++        const fragment = assignmentItemTemplate.content.cloneNode(true);
++        const row = fragment.querySelector(".assignment-row");
++        const select = fragment.querySelector(".assignment-select");
++        const saveButton = fragment.querySelector(".assignment-save");
++
++        fragment.querySelector(".assignment-code").textContent = camera.cameraCode;
++        fragment.querySelector(".assignment-name").textContent = camera.name;
++        fragment.querySelector(".assignment-location").textContent = camera.location || "Konum belirtilmemiş";
++        select.append(createCustomerOptions(camera.customerId));
++
++        saveButton.addEventListener("click", async () => {
++            if (!select.value) {
++                assignmentMessage.textContent = "Atama için bir müşteri seçin.";
++                assignmentMessage.className = "form-message error";
++                return;
++            }
++
++            saveButton.disabled = true;
++            assignmentMessage.textContent = `${camera.cameraCode} atanıyor…`;
++            assignmentMessage.className = "form-message";
++
++            try {
++                const response = await apiFetch(`/api/cameras/${encodeURIComponent(camera.cameraCode)}/customer`, {
++                    method: "PATCH",
++                    headers: { "Content-Type": "application/json" },
++                    body: JSON.stringify({ customerId: select.value })
++                });
++
++                if (!response.ok) throw new Error(await readError(response));
++                const updated = await response.json();
++                camera.customerId = updated.customerId;
++                row.dataset.saved = "true";
++                assignmentMessage.textContent = `${camera.cameraCode} müşteri hesabına atandı.`;
++                assignmentMessage.className = "form-message success";
++            } catch (error) {
++                assignmentMessage.textContent = error.message || "Atama kaydedilemedi.";
++                assignmentMessage.className = "form-message error";
++            } finally {
++                saveButton.disabled = false;
++            }
++        });
++
++        cameraAssignments.append(fragment);
++    });
++}
++
++async function loadData() {
++    const [customerResponse, cameraResponse] = await Promise.all([
++        apiFetch("/api/admin/customers"),
++        apiFetch("/api/cameras?activeOnly=false")
++    ]);
++
++    if (!customerResponse.ok) throw new Error(await readError(customerResponse));
++    if (!cameraResponse.ok) throw new Error(await readError(cameraResponse));
++
++    state.customers = await customerResponse.json();
++    state.cameras = await cameraResponse.json();
++    renderCustomers();
++    renderAssignments();
++}
++
++customerForm.addEventListener("submit", async event => {
++    event.preventDefault();
++    const submitButton = customerForm.querySelector("button[type='submit']");
++    submitButton.disabled = true;
++    customerMessage.textContent = "Müşteri hesabı oluşturuluyor…";
++    customerMessage.className = "form-message";
++
++    try {
++        const response = await apiFetch("/api/admin/customers", {
++            method: "POST",
++            headers: { "Content-Type": "application/json" },
++            body: JSON.stringify({
++                fullName: document.querySelector("#customerName").value.trim(),
++                email: document.querySelector("#customerEmail").value.trim(),
++                password: document.querySelector("#customerPassword").value
++            })
++        });
++
++        if (!response.ok) throw new Error(await readError(response));
++        const customer = await response.json();
++        state.customers.push(customer);
++        state.customers.sort((a, b) => a.fullName.localeCompare(b.fullName, "tr"));
++        customerForm.reset();
++        renderCustomers();
++        renderAssignments();
++        customerMessage.textContent = "Müşteri hesabı başarıyla oluşturuldu.";
++        customerMessage.className = "form-message success";
++    } catch (error) {
++        customerMessage.textContent = error.message || "Müşteri hesabı oluşturulamadı.";
++        customerMessage.className = "form-message error";
++    } finally {
++        submitButton.disabled = false;
++    }
++});
++
++async function initialize() {
++    const user = await window.WildlifeSession.loadCurrentUser();
++    if (user.role !== "ADMIN") {
++        window.location.replace("/");
++        return;
++    }
++
++    await window.WildlifeSession.loadCsrf();
++
++    try {
++        await loadData();
++    } catch (error) {
++        assignmentMessage.textContent = error.message || "Yönetim verileri yüklenemedi.";
++        assignmentMessage.className = "form-message error";
++    }
++}
++
++initialize();
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/app.js wildlife_auth_patch_work/src/main/resources/static/app.js
+--- wildlife_auth_patch_original/src/main/resources/static/app.js	2026-07-14 07:11:21.949241394 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/app.js	2026-07-14 07:27:36.920617761 +0000
+@@ -5,7 +5,8 @@
+     totalElements: 0,
+     mediaType: "",
+     cameraId: "",
+-    cameras: []
++    cameras: [],
++    currentUser: null
+ };
+ 
+ const gallery = document.querySelector("#gallery");
+@@ -30,6 +31,7 @@
+ const cameraIdInput = document.querySelector("#cameraId");
+ const cameraFilterInput = document.querySelector("#cameraFilter");
+ const introLiveLink = document.querySelector("#introLiveLink");
++const ingestColumn = document.querySelector(".ingest-column");
+ 
+ function formatDate(value) {
+     if (!value) return "—";
+@@ -73,11 +75,21 @@
+     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+ 
+     try {
+-        return await fetch(url, {
++        const securedOptions = window.WildlifeSession
++            ? await window.WildlifeSession.withCsrf(options)
++            : options;
++
++        const response = await fetch(url, {
+             cache: "no-store",
+-            ...options,
++            ...securedOptions,
+             signal: controller.signal
+         });
++
++        if (response.status === 401) {
++            window.location.replace("/login.html");
++        }
++
++        return response;
+     } finally {
+         window.clearTimeout(timeout);
+     }
+@@ -92,6 +104,16 @@
+     }
+ }
+ 
++function applyUserInterface(user) {
++    state.currentUser = user;
++    const isAdmin = user.role === "ADMIN";
++    document.body.classList.toggle("customer-view", !isAdmin);
++
++    if (ingestColumn) {
++        ingestColumn.hidden = !isAdmin;
++    }
++}
++
+ function createPreview(media) {
+     if (media.mediaType === "VIDEO") {
+         const video = document.createElement("video");
+@@ -127,7 +149,12 @@
+     fragment.querySelector(".description").textContent = media.description || "Bu kayıt için saha notu eklenmemiş.";
+     fragment.querySelector(".download-link").href = media.downloadUrl;
+ 
+-    fragment.querySelector(".delete-button").addEventListener("click", async () => {
++    const deleteButton = fragment.querySelector(".delete-button");
++    if (state.currentUser?.role !== "ADMIN") {
++        deleteButton.hidden = true;
++    }
++
++    deleteButton.addEventListener("click", async () => {
+         const approved = window.confirm(`“${media.originalFilename}” kaydı ve dosyası kalıcı olarak silinsin mi?`);
+         if (!approved) return;
+ 
+@@ -409,6 +436,9 @@
+ }
+ 
+ async function initialize() {
++    const currentUser = await window.WildlifeSession.loadCurrentUser();
++    applyUserInterface(currentUser);
++    await window.WildlifeSession.loadCsrf();
+     readInitialArchiveState();
+     await Promise.allSettled([loadCameras(), checkService()]);
+     await loadMedia();
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/index.html wildlife_auth_patch_work/src/main/resources/static/index.html
+--- wildlife_auth_patch_original/src/main/resources/static/index.html	2026-07-14 07:10:31.977800002 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/index.html	2026-07-14 07:30:48.524834765 +0000
+@@ -22,12 +22,20 @@
+             <nav class="primary-nav" aria-label="Ana navigasyon">
+                 <a class="nav-link is-active" href="/">Arşiv</a>
+                 <a class="nav-link" href="/live.html">Canlı gözlem</a>
++                <a class="nav-link" href="/admin.html" data-admin-only hidden>Yönetim</a>
+             </nav>
+ 
+             <div id="serviceStatus" class="service-status is-checking" role="status" aria-live="polite">
+                 <span class="status-dot" aria-hidden="true"></span>
+                 <span class="status-copy">Bağlantı kontrol ediliyor</span>
+             </div>
++            <div class="session-account" aria-label="Oturum bilgisi">
++                <span>
++                    <strong data-session-name>Hesap yükleniyor</strong>
++                    <small data-session-role>—</small>
++                </span>
++                <button class="session-logout" type="button" data-logout>Çıkış</button>
++            </div>
+         </div>
+     </header>
+ 
+@@ -232,6 +240,7 @@
+     </article>
+ </template>
+ 
++<script src="/session.js"></script>
+ <script src="/app.js"></script>
+ </body>
+ </html>
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/live.html wildlife_auth_patch_work/src/main/resources/static/live.html
+--- wildlife_auth_patch_original/src/main/resources/static/live.html	2026-07-14 07:11:30.745374232 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/live.html	2026-07-14 07:30:48.525100378 +0000
+@@ -22,11 +22,19 @@
+             <nav class="primary-nav" aria-label="Ana navigasyon">
+                 <a class="nav-link" href="/">Arşiv</a>
+                 <a class="nav-link is-active" href="/live.html">Canlı gözlem</a>
++                <a class="nav-link" href="/admin.html" data-admin-only hidden>Yönetim</a>
+             </nav>
+             <div id="liveConnectionStatus" class="service-status is-checking" role="status" aria-live="polite">
+                 <span class="status-dot" aria-hidden="true"></span>
+                 <span class="status-copy">Yayın başlatılmadı</span>
+             </div>
++            <div class="session-account" aria-label="Oturum bilgisi">
++                <span>
++                    <strong data-session-name>Hesap yükleniyor</strong>
++                    <small data-session-role>—</small>
++                </span>
++                <button class="session-logout" type="button" data-logout>Çıkış</button>
++            </div>
+         </div>
+     </header>
+ 
+@@ -133,6 +141,7 @@
+     </footer>
+ </div>
+ 
++<script src="/session.js"></script>
+ <script src="/live.js"></script>
+ </body>
+ </html>
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/live.js wildlife_auth_patch_work/src/main/resources/static/live.js
+--- wildlife_auth_patch_original/src/main/resources/static/live.js	2026-07-14 07:12:07.846830349 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/live.js	2026-07-14 07:27:58.321929814 +0000
+@@ -13,6 +13,7 @@
+ const modeLabel = document.querySelector("#liveModeLabel");
+ const participantCount = document.querySelector("#participantCount");
+ const modeButtons = [...document.querySelectorAll(".mode-button")];
++const publisherModeButton = document.querySelector("#publisherMode");
+ 
+ let selectedMode = "viewer";
+ let selectedCamera = null;
+@@ -20,6 +21,18 @@
+ let jitsiApi = null;
+ let participants = new Set();
+ let scriptPromise = null;
++let currentUser = null;
++
++function applyUserInterface(user) {
++    currentUser = user;
++    const isAdmin = user.role === "ADMIN";
++    document.body.classList.toggle("customer-view", !isAdmin);
++
++    if (!isAdmin && publisherModeButton) {
++        publisherModeButton.hidden = true;
++        selectMode("viewer");
++    }
++}
+ 
+ function setConnectionStatus(mode, text) {
+     connectionStatus.className = `service-status is-${mode}`;
+@@ -36,11 +49,21 @@
+     const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+ 
+     try {
+-        return await fetch(url, {
++        const securedOptions = window.WildlifeSession
++            ? await window.WildlifeSession.withCsrf(options)
++            : options;
++
++        const response = await fetch(url, {
+             cache: "no-store",
+-            ...options,
++            ...securedOptions,
+             signal: controller.signal
+         });
++
++        if (response.status === 401) {
++            window.location.replace("/login.html");
++        }
++
++        return response;
+     } finally {
+         window.clearTimeout(timeout);
+     }
+@@ -79,6 +102,9 @@
+ }
+ 
+ function selectMode(mode) {
++    if (mode === "publisher" && currentUser?.role !== "ADMIN") {
++        mode = "viewer";
++    }
+     selectedMode = mode;
+     modeButtons.forEach(button => {
+         const selected = button.dataset.mode === mode;
+@@ -296,6 +322,7 @@
+ 
+ modeButtons.forEach(button => {
+     button.addEventListener("click", () => {
++        if (button.dataset.mode === "publisher" && currentUser?.role !== "ADMIN") return;
+         if (jitsiApi) {
+             const confirmed = window.confirm("Mod değiştirmek mevcut canlı bağlantıyı sonlandırır. Devam edilsin mi?");
+             if (!confirmed) return;
+@@ -320,6 +347,10 @@
+ window.addEventListener("beforeunload", () => jitsiApi?.dispose());
+ 
+ async function initialize() {
++    currentUser = await window.WildlifeSession.loadCurrentUser();
++    applyUserInterface(currentUser);
++    await window.WildlifeSession.loadCsrf();
++
+     const params = new URLSearchParams(window.location.search);
+     const requestedCamera = params.get("camera") || "";
+     const requestedMode = params.get("mode");
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/login.html wildlife_auth_patch_work/src/main/resources/static/login.html
+--- wildlife_auth_patch_original/src/main/resources/static/login.html	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/login.html	2026-07-14 07:27:01.995904409 +0000
+@@ -0,0 +1,74 @@
++<!doctype html>
++<html lang="tr">
++<head>
++    <meta charset="UTF-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1.0">
++    <meta name="description" content="Wildlife Archive müşteri ve yönetici giriş ekranı.">
++    <title>Oturum Aç · Wildlife Archive</title>
++    <link rel="stylesheet" href="/styles.css">
++</head>
++<body class="login-page">
++<main class="login-shell">
++    <section class="login-identity" aria-labelledby="loginTitle">
++        <a class="brand login-brand" href="/login.html">
++            <span class="brand-mark" aria-hidden="true">WA</span>
++            <span>
++                <strong>Wildlife Archive</strong>
++                <small>OMÜ IoT Lab</small>
++            </span>
++        </a>
++
++        <div>
++            <p class="kicker">Güvenli saha erişimi</p>
++            <h1 id="loginTitle">Fotokapanlarınıza<br>tek panelden ulaşın.</h1>
++            <p>
++                Canlı gözlem odalarını ve geçmiş medya kayıtlarını yalnızca size
++                tanımlanan fotokapanlar üzerinden görüntüleyin.
++            </p>
++        </div>
++
++        <footer>
++            <span>Spring Security oturum yönetimi</span>
++            <span>Parolalar BCrypt ile saklanır</span>
++        </footer>
++    </section>
++
++    <section class="login-panel" aria-label="Oturum açma formu">
++        <div class="section-number">01 / OTURUM</div>
++        <h2>Hesabınıza giriş yapın</h2>
++        <p class="login-panel-copy">Yönetici veya müşteri e-posta adresinizi kullanın.</p>
++
++        <form id="loginForm" class="login-form" action="/login" method="post">
++            <input id="csrfField" type="hidden" name="_csrf" value="">
++
++            <label class="field">
++                <span>E-posta adresi</span>
++                <input name="username" type="email" autocomplete="username" required
++                       placeholder="customer@wildlife.local">
++            </label>
++
++            <label class="field">
++                <span>Parola</span>
++                <input name="password" type="password" autocomplete="current-password" required
++                       placeholder="••••••••">
++            </label>
++
++            <button id="loginButton" class="primary-action" type="submit" disabled>
++                <span>Oturum aç</span>
++                <span aria-hidden="true">→</span>
++            </button>
++
++            <p id="loginMessage" class="form-message" role="status" aria-live="polite"></p>
++        </form>
++
++        <div class="login-demo-note">
++            <strong>Yerel demo hesapları</strong>
++            <span>Yönetici: admin@wildlife.local</span>
++            <span>Müşteri: customer@wildlife.local</span>
++            <small>Parolalar proje klasöründeki .env dosyasından yönetilir.</small>
++        </div>
++    </section>
++</main>
++<script src="/login.js"></script>
++</body>
++</html>
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/login.js wildlife_auth_patch_work/src/main/resources/static/login.js
+--- wildlife_auth_patch_original/src/main/resources/static/login.js	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/login.js	2026-07-14 07:27:02.001993303 +0000
+@@ -0,0 +1,44 @@
++const form = document.querySelector("#loginForm");
++const csrfField = document.querySelector("#csrfField");
++const loginButton = document.querySelector("#loginButton");
++const loginMessage = document.querySelector("#loginMessage");
++
++function showQueryMessage() {
++    const params = new URLSearchParams(window.location.search);
++
++    if (params.has("error")) {
++        loginMessage.textContent = "E-posta adresi veya parola hatalı.";
++        loginMessage.className = "form-message error";
++    } else if (params.has("logout")) {
++        loginMessage.textContent = "Oturum güvenli şekilde kapatıldı.";
++        loginMessage.className = "form-message success";
++    }
++}
++
++async function prepareLogin() {
++    showQueryMessage();
++
++    try {
++        const response = await fetch("/api/auth/csrf", {
++            credentials: "same-origin",
++            cache: "no-store"
++        });
++
++        if (!response.ok) throw new Error();
++        const csrf = await response.json();
++        csrfField.name = csrf.parameterName;
++        csrfField.value = csrf.token;
++        loginButton.disabled = false;
++    } catch {
++        loginMessage.textContent = "Giriş servisine ulaşılamıyor. Uygulama loglarını kontrol edin.";
++        loginMessage.className = "form-message error";
++    }
++}
++
++form.addEventListener("submit", () => {
++    loginButton.disabled = true;
++    loginMessage.textContent = "Oturum doğrulanıyor…";
++    loginMessage.className = "form-message";
++});
++
++prepareLogin();
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/session.js wildlife_auth_patch_work/src/main/resources/static/session.js
+--- wildlife_auth_patch_original/src/main/resources/static/session.js	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/session.js	2026-07-14 07:30:48.525269865 +0000
+@@ -0,0 +1,99 @@
++(() => {
++    let csrf = null;
++    let currentUser = null;
++
++    async function loadCsrf() {
++        if (csrf) return csrf;
++
++        const response = await fetch("/api/auth/csrf", {
++            credentials: "same-origin",
++            cache: "no-store"
++        });
++
++        if (!response.ok) {
++            throw new Error("Güvenlik anahtarı alınamadı.");
++        }
++
++        csrf = await response.json();
++        return csrf;
++    }
++
++    async function withCsrf(options = {}) {
++        const method = String(options.method || "GET").toUpperCase();
++        const securedOptions = {
++            credentials: "same-origin",
++            ...options
++        };
++
++        if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
++            const token = await loadCsrf();
++            const headers = new Headers(options.headers || {});
++            headers.set(token.headerName, token.token);
++            securedOptions.headers = headers;
++        }
++
++        return securedOptions;
++    }
++
++    async function loadCurrentUser() {
++        if (currentUser) return currentUser;
++
++        const response = await fetch("/api/auth/me", {
++            credentials: "same-origin",
++            cache: "no-store"
++        });
++
++        if (response.status === 401) {
++            window.location.replace("/login.html");
++            throw new Error("Oturum bulunamadı.");
++        }
++
++        if (!response.ok) {
++            throw new Error("Kullanıcı bilgisi alınamadı.");
++        }
++
++        currentUser = await response.json();
++        renderAccount(currentUser);
++        return currentUser;
++    }
++
++    function renderAccount(user) {
++        document.querySelectorAll("[data-session-name]").forEach(element => {
++            element.textContent = user.fullName;
++        });
++
++        document.querySelectorAll("[data-session-role]").forEach(element => {
++            element.textContent = user.role === "ADMIN" ? "Yönetici" : "Müşteri";
++        });
++
++        document.body.dataset.userRole = user.role;
++
++        document.querySelectorAll("[data-admin-only]").forEach(element => {
++            element.hidden = user.role !== "ADMIN";
++        });
++    }
++
++    async function logout() {
++        try {
++            const options = await withCsrf({ method: "POST" });
++            await fetch("/logout", options);
++        } finally {
++            window.location.replace("/login.html?logout");
++        }
++    }
++
++    document.addEventListener("click", event => {
++        const button = event.target.closest("[data-logout]");
++        if (!button) return;
++        event.preventDefault();
++        logout();
++    });
++
++    window.WildlifeSession = {
++        loadCsrf,
++        withCsrf,
++        loadCurrentUser,
++        logout,
++        getCurrentUser: () => currentUser
++    };
++})();
+diff -ruN wildlife_auth_patch_original/src/main/resources/static/styles.css wildlife_auth_patch_work/src/main/resources/static/styles.css
+--- wildlife_auth_patch_original/src/main/resources/static/styles.css	2026-07-14 07:12:35.742457914 +0000
++++ wildlife_auth_patch_work/src/main/resources/static/styles.css	2026-07-14 07:32:18.146967992 +0000
+@@ -1553,3 +1553,455 @@
+         flex-wrap: wrap;
+     }
+ }
++
++/* =========================================================
++   OTURUM, MÜŞTERİ GÖRÜNÜMÜ VE GİRİŞ EKRANI
++   ========================================================= */
++
++.session-account {
++    display: inline-flex;
++    align-items: center;
++    gap: 14px;
++    min-width: 0;
++    padding-left: 18px;
++    border-left: 1px solid var(--line, #c9c3b7);
++}
++
++.session-account > span {
++    display: grid;
++    gap: 2px;
++    min-width: 0;
++}
++
++.session-account strong,
++.session-account small {
++    max-width: 170px;
++    overflow: hidden;
++    text-overflow: ellipsis;
++    white-space: nowrap;
++}
++
++.session-account strong {
++    color: var(--ink, #15191b);
++    font-family: Arial, Helvetica, sans-serif;
++    font-size: 0.78rem;
++    font-weight: 700;
++}
++
++.session-account small {
++    color: var(--muted, #62686b);
++    font-family: Arial, Helvetica, sans-serif;
++    font-size: 0.7rem;
++    letter-spacing: 0.08em;
++    text-transform: uppercase;
++}
++
++.session-logout {
++    appearance: none;
++    padding: 8px 0;
++    border: 0;
++    border-bottom: 1px solid currentColor;
++    background: transparent;
++    color: var(--accent, #a34a2b);
++    font: 700 0.75rem/1 Arial, Helvetica, sans-serif;
++    cursor: pointer;
++}
++
++.session-logout:hover {
++    opacity: 0.65;
++}
++
++.customer-view .workspace {
++    grid-template-columns: minmax(0, 1fr);
++}
++
++.customer-view .archive-column {
++    grid-column: 1 / -1;
++}
++
++.customer-view .delete-button,
++.customer-view .ingest-column {
++    display: none !important;
++}
++
++.login-page {
++    min-height: 100vh;
++    overflow-x: hidden;
++    background: #eee9df;
++}
++
++.login-shell {
++    display: grid;
++    grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.65fr);
++    min-height: 100vh;
++}
++
++.login-identity {
++    display: flex;
++    flex-direction: column;
++    justify-content: space-between;
++    min-height: 100vh;
++    padding: clamp(28px, 4vw, 64px);
++    border-right: 1px solid #bdb7aa;
++    background:
++        linear-gradient(rgba(8, 34, 41, 0.78), rgba(8, 34, 41, 0.9)),
++        radial-gradient(circle at 72% 20%, rgba(195, 110, 65, 0.32), transparent 34%),
++        #0b2a32;
++    color: #f2eee5;
++}
++
++.login-brand {
++    color: inherit;
++}
++
++.login-identity h1 {
++    max-width: 920px;
++    margin: 20px 0 24px;
++    color: #f2eee5;
++    font-size: clamp(3.6rem, 7vw, 8.4rem);
++    line-height: 0.84;
++    letter-spacing: -0.065em;
++}
++
++.login-identity > div > p:last-child {
++    max-width: 620px;
++    color: rgba(242, 238, 229, 0.72);
++    font: 400 clamp(1rem, 1.5vw, 1.25rem)/1.7 Arial, Helvetica, sans-serif;
++}
++
++.login-identity footer {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 12px 32px;
++    padding-top: 24px;
++    border-top: 1px solid rgba(242, 238, 229, 0.25);
++    color: rgba(242, 238, 229, 0.64);
++    font: 600 0.72rem/1.4 Arial, Helvetica, sans-serif;
++    letter-spacing: 0.08em;
++    text-transform: uppercase;
++}
++
++.login-panel {
++    display: flex;
++    flex-direction: column;
++    justify-content: center;
++    padding: clamp(34px, 5vw, 82px);
++    background: #f4f0e7;
++}
++
++.login-panel h2 {
++    max-width: 480px;
++    margin: 16px 0 12px;
++    color: #16191a;
++    font-size: clamp(2.3rem, 4vw, 4.8rem);
++    line-height: 0.94;
++    letter-spacing: -0.05em;
++}
++
++.login-panel-copy {
++    margin: 0 0 38px;
++    color: #646a6c;
++    font: 400 0.98rem/1.6 Arial, Helvetica, sans-serif;
++}
++
++.login-form {
++    display: grid;
++    gap: 24px;
++}
++
++.login-form .field input {
++    font-size: 1rem;
++}
++
++.login-form .primary-action {
++    margin-top: 8px;
++}
++
++.login-demo-note {
++    display: grid;
++    gap: 6px;
++    margin-top: 42px;
++    padding-top: 24px;
++    border-top: 1px solid #c9c3b7;
++    color: #646a6c;
++    font: 400 0.8rem/1.5 Arial, Helvetica, sans-serif;
++}
++
++.login-demo-note strong {
++    margin-bottom: 4px;
++    color: #16191a;
++    text-transform: uppercase;
++    letter-spacing: 0.08em;
++}
++
++.login-demo-note small {
++    margin-top: 8px;
++    color: #8a8e8e;
++}
++
++@media (max-width: 1050px) {
++    .masthead-actions {
++        flex-wrap: wrap;
++    }
++
++    .session-account {
++        width: 100%;
++        justify-content: flex-end;
++        padding-top: 12px;
++        padding-left: 0;
++        border-top: 1px solid var(--line, #c9c3b7);
++        border-left: 0;
++    }
++
++    .login-shell {
++        grid-template-columns: 1fr;
++    }
++
++    .login-identity {
++        min-height: 62vh;
++        border-right: 0;
++        border-bottom: 1px solid #bdb7aa;
++    }
++
++    .login-panel {
++        min-height: 60vh;
++    }
++}
++
++@media (max-width: 640px) {
++    .session-account {
++        justify-content: space-between;
++    }
++
++    .login-identity,
++    .login-panel {
++        padding: 26px 20px;
++    }
++
++    .login-identity h1 {
++        font-size: clamp(3rem, 16vw, 5.4rem);
++    }
++}
++
++/* =========================================================
++   YÖNETİM EKRANI
++   ========================================================= */
++
++.admin-workspace {
++    padding: clamp(30px, 5vw, 78px) clamp(22px, 4vw, 64px) 80px;
++}
++
++.admin-intro {
++    display: grid;
++    grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
++    gap: 34px 70px;
++    align-items: end;
++    padding-bottom: 48px;
++    border-bottom: 1px solid var(--line, #c9c3b7);
++}
++
++.admin-intro .section-number,
++.admin-intro .kicker,
++.admin-intro h1 {
++    grid-column: 1;
++}
++
++.admin-intro h1 {
++    margin: 4px 0 0;
++    max-width: 980px;
++    font-size: clamp(3.5rem, 7vw, 8rem);
++    line-height: 0.85;
++    letter-spacing: -0.065em;
++}
++
++.admin-intro > p:last-child {
++    grid-column: 2;
++    grid-row: 1 / span 3;
++    align-self: end;
++    margin: 0;
++    color: var(--muted, #62686b);
++    font: 400 1rem/1.75 Arial, Helvetica, sans-serif;
++}
++
++.admin-grid {
++    display: grid;
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++    gap: 0;
++    margin-top: 54px;
++    border-top: 1px solid var(--ink, #15191b);
++    border-left: 1px solid var(--line, #c9c3b7);
++}
++
++.admin-section {
++    min-width: 0;
++    padding: 32px;
++    border-right: 1px solid var(--line, #c9c3b7);
++    border-bottom: 1px solid var(--line, #c9c3b7);
++}
++
++.admin-section-wide {
++    grid-column: 1 / -1;
++}
++
++.admin-section > header {
++    display: flex;
++    gap: 18px;
++    align-items: flex-start;
++    margin-bottom: 30px;
++}
++
++.admin-section > header > span {
++    color: var(--accent, #a34a2b);
++    font: 700 0.78rem/1 Arial, Helvetica, sans-serif;
++    letter-spacing: 0.12em;
++}
++
++.admin-section h2 {
++    margin: 5px 0 0;
++    font-size: clamp(2rem, 3vw, 3.4rem);
++    line-height: 0.95;
++}
++
++.admin-form {
++    display: grid;
++    gap: 22px;
++}
++
++.admin-list,
++.assignment-list {
++    display: grid;
++}
++
++.admin-list-row {
++    display: grid;
++    grid-template-columns: minmax(0, 1fr) auto;
++    gap: 16px;
++    align-items: center;
++    padding: 18px 0;
++    border-top: 1px solid var(--line, #c9c3b7);
++}
++
++.admin-list-row:first-child {
++    border-top-color: var(--ink, #15191b);
++}
++
++.admin-list-row > div {
++    display: grid;
++    gap: 4px;
++}
++
++.admin-list-row strong,
++.assignment-row strong {
++    color: var(--ink, #15191b);
++    font-family: Arial, Helvetica, sans-serif;
++}
++
++.admin-list-row span,
++.assignment-row small {
++    color: var(--muted, #62686b);
++    font: 400 0.84rem/1.5 Arial, Helvetica, sans-serif;
++}
++
++.admin-list-row code {
++    max-width: 190px;
++    overflow: hidden;
++    color: var(--accent, #a34a2b);
++    font-size: 0.72rem;
++    text-overflow: ellipsis;
++    white-space: nowrap;
++}
++
++.assignment-row {
++    display: grid;
++    grid-template-columns: minmax(220px, 1fr) minmax(280px, 1fr) auto;
++    gap: 24px;
++    align-items: end;
++    padding: 24px 0;
++    border-top: 1px solid var(--line, #c9c3b7);
++}
++
++.assignment-row:first-child {
++    border-top-color: var(--ink, #15191b);
++}
++
++.assignment-row > div {
++    display: grid;
++    gap: 4px;
++}
++
++.assignment-code {
++    color: var(--accent, #a34a2b);
++    font: 700 0.72rem/1.2 Arial, Helvetica, sans-serif;
++    letter-spacing: 0.1em;
++}
++
++.assignment-row label {
++    display: grid;
++    gap: 8px;
++}
++
++.assignment-row label > span {
++    color: var(--muted, #62686b);
++    font: 700 0.7rem/1 Arial, Helvetica, sans-serif;
++    letter-spacing: 0.1em;
++    text-transform: uppercase;
++}
++
++.assignment-row select {
++    width: 100%;
++    min-height: 48px;
++    border: 0;
++    border-bottom: 1px solid var(--line, #c9c3b7);
++    border-radius: 0;
++    background: transparent;
++}
++
++.assignment-row[data-saved="true"] {
++    background: rgba(31, 104, 78, 0.05);
++}
++
++.admin-empty {
++    margin: 0;
++    padding: 24px 0;
++    color: var(--muted, #62686b);
++    font: 400 0.9rem/1.6 Arial, Helvetica, sans-serif;
++}
++
++@media (max-width: 980px) {
++    .admin-intro {
++        grid-template-columns: 1fr;
++    }
++
++    .admin-intro > p:last-child {
++        grid-column: 1;
++        grid-row: auto;
++    }
++
++    .admin-grid {
++        grid-template-columns: 1fr;
++    }
++
++    .admin-section-wide {
++        grid-column: 1;
++    }
++
++    .assignment-row {
++        grid-template-columns: 1fr;
++        align-items: stretch;
++    }
++}
++
++@media (max-width: 640px) {
++    .admin-workspace {
++        padding-right: 18px;
++        padding-left: 18px;
++    }
++
++    .admin-section {
++        padding: 24px 18px;
++    }
++
++    .admin-list-row {
++        grid-template-columns: 1fr;
++    }
++}

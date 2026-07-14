@@ -1,0 +1,1349 @@
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/config/CameraDataInitializer.java	2026-07-14 07:09:40.500204092 +0000
+@@ -0,0 +1,42 @@
++package com.omuiotlab.wildlifemediaservice.config;
++
++import com.omuiotlab.wildlifemediaservice.model.Camera;
++import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++import com.omuiotlab.wildlifemediaservice.repository.CameraRepository;
++import org.springframework.boot.ApplicationArguments;
++import org.springframework.boot.ApplicationRunner;
++import org.springframework.stereotype.Component;
++
++import java.time.Instant;
++
++@Component
++public class CameraDataInitializer implements ApplicationRunner {
++
++    private static final String DEMO_CAMERA_CODE = "CAM-TR-001";
++
++    private final CameraRepository cameraRepository;
++
++    public CameraDataInitializer(CameraRepository cameraRepository) {
++        this.cameraRepository = cameraRepository;
++    }
++
++    @Override
++    public void run(ApplicationArguments args) {
++        if (cameraRepository.existsByCameraCodeIgnoreCase(DEMO_CAMERA_CODE)) {
++            return;
++        }
++
++        Camera demoCamera = Camera.builder()
++                .cameraCode(DEMO_CAMERA_CODE)
++                .name("Demo Fotokapan")
++                .location("Samsun · Test sahası")
++                .jitsiRoomName("OMUIoTLabWildlife_CAMTR001")
++                .status(CameraStatus.ONLINE)
++                .description("Jitsi canlı gözlem prototipi için oluşturulan örnek fotokapan.")
++                .active(true)
++                .lastSeenAt(Instant.now())
++                .build();
++
++        cameraRepository.save(demoCamera);
++    }
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/controller/CameraController.java	2026-07-14 07:09:40.493711447 +0000
+@@ -0,0 +1,63 @@
++package com.omuiotlab.wildlifemediaservice.controller;
++
++import com.omuiotlab.wildlifemediaservice.dto.CameraCreateRequest;
++import com.omuiotlab.wildlifemediaservice.dto.CameraResponse;
++import com.omuiotlab.wildlifemediaservice.dto.CameraStatusUpdateRequest;
++import com.omuiotlab.wildlifemediaservice.service.CameraService;
++import jakarta.validation.Valid;
++import org.springframework.http.ResponseEntity;
++import org.springframework.web.bind.annotation.DeleteMapping;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PatchMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++
++import java.util.List;
++
++@RestController
++@RequestMapping("/api/cameras")
++public class CameraController {
++
++    private final CameraService cameraService;
++
++    public CameraController(CameraService cameraService) {
++        this.cameraService = cameraService;
++    }
++
++    @PostMapping
++    public ResponseEntity<CameraResponse> create(
++            @Valid @RequestBody CameraCreateRequest request
++    ) {
++        return ResponseEntity.status(201).body(cameraService.create(request));
++    }
++
++    @GetMapping
++    public List<CameraResponse> list(
++            @RequestParam(defaultValue = "false") boolean activeOnly
++    ) {
++        return cameraService.list(activeOnly);
++    }
++
++    @GetMapping("/{cameraCode}")
++    public CameraResponse getByCameraCode(@PathVariable String cameraCode) {
++        return cameraService.getByCameraCode(cameraCode);
++    }
++
++    @PatchMapping("/{cameraCode}/status")
++    public CameraResponse updateStatus(
++            @PathVariable String cameraCode,
++            @Valid @RequestBody CameraStatusUpdateRequest request
++    ) {
++        return cameraService.updateStatus(cameraCode, request.status());
++    }
++
++    @DeleteMapping("/{cameraCode}")
++    public ResponseEntity<Void> delete(@PathVariable String cameraCode) {
++        cameraService.delete(cameraCode);
++        return ResponseEntity.noContent().build();
++    }
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCreateRequest.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCreateRequest.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCreateRequest.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraCreateRequest.java	2026-07-14 07:09:40.438035828 +0000
+@@ -0,0 +1,41 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++
++public record CameraCreateRequest(
++        @NotBlank(message = "Fotokapan kodu boş olamaz.")
++        @Size(max = 80, message = "Fotokapan kodu en fazla 80 karakter olabilir.")
++        @Pattern(
++                regexp = "^[A-Za-z0-9_-]+$",
++                message = "Fotokapan kodunda yalnızca harf, rakam, tire ve alt çizgi kullanılabilir."
++        )
++        String cameraCode,
++
++        @NotBlank(message = "Fotokapan adı boş olamaz.")
++        @Size(max = 120, message = "Fotokapan adı en fazla 120 karakter olabilir.")
++        String name,
++
++        @Size(max = 180, message = "Konum en fazla 180 karakter olabilir.")
++        String location,
++
++        @Size(max = 160, message = "Jitsi oda adı en fazla 160 karakter olabilir.")
++        @Pattern(
++                regexp = "^$|^[A-Za-z0-9_-]+$",
++                message = "Jitsi oda adında yalnızca harf, rakam, tire ve alt çizgi kullanılabilir."
++        )
++        String jitsiRoomName,
++
++        CameraStatus status,
++
++        @Size(max = 100, message = "Müşteri kimliği en fazla 100 karakter olabilir.")
++        String customerId,
++
++        @Size(max = 500, message = "Açıklama en fazla 500 karakter olabilir.")
++        String description,
++
++        Boolean active
++) {
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraResponse.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraResponse.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraResponse.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraResponse.java	2026-07-14 07:09:40.450784681 +0000
+@@ -0,0 +1,47 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import com.omuiotlab.wildlifemediaservice.model.Camera;
++import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++
++import java.time.Instant;
++
++public record CameraResponse(
++        String id,
++        String cameraCode,
++        String name,
++        String location,
++        String jitsiRoomName,
++        CameraStatus status,
++        String customerId,
++        String description,
++        boolean active,
++        Instant lastSeenAt,
++        Instant createdAt,
++        Instant updatedAt,
++        String liveUrl,
++        String archiveUrl
++) {
++    public static CameraResponse from(Camera camera) {
++        String encodedCameraCode = java.net.URLEncoder.encode(
++                camera.getCameraCode(),
++                java.nio.charset.StandardCharsets.UTF_8
++        );
++
++        return new CameraResponse(
++                camera.getId(),
++                camera.getCameraCode(),
++                camera.getName(),
++                camera.getLocation(),
++                camera.getJitsiRoomName(),
++                camera.getStatus(),
++                camera.getCustomerId(),
++                camera.getDescription(),
++                camera.isActive(),
++                camera.getLastSeenAt(),
++                camera.getCreatedAt(),
++                camera.getUpdatedAt(),
++                "/live.html?camera=" + encodedCameraCode + "&mode=viewer",
++                "/?cameraCode=" + encodedCameraCode
++        );
++    }
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraStatusUpdateRequest.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraStatusUpdateRequest.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraStatusUpdateRequest.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/dto/CameraStatusUpdateRequest.java	2026-07-14 07:09:40.444423464 +0000
+@@ -0,0 +1,10 @@
++package com.omuiotlab.wildlifemediaservice.dto;
++
++import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++import jakarta.validation.constraints.NotNull;
++
++public record CameraStatusUpdateRequest(
++        @NotNull(message = "Fotokapan durumu boş olamaz.")
++        CameraStatus status
++) {
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/CameraNotFoundException.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/CameraNotFoundException.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/CameraNotFoundException.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/CameraNotFoundException.java	2026-07-14 07:09:40.472044555 +0000
+@@ -0,0 +1,8 @@
++package com.omuiotlab.wildlifemediaservice.exception;
++
++public class CameraNotFoundException extends RuntimeException {
++
++    public CameraNotFoundException(String cameraCode) {
++        super("Fotokapan bulunamadı: " + cameraCode);
++    }
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateCameraCodeException.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateCameraCodeException.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateCameraCodeException.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/DuplicateCameraCodeException.java	2026-07-14 07:09:40.479047625 +0000
+@@ -0,0 +1,8 @@
++package com.omuiotlab.wildlifemediaservice.exception;
++
++public class DuplicateCameraCodeException extends RuntimeException {
++
++    public DuplicateCameraCodeException(String cameraCode) {
++        super("Bu fotokapan kodu zaten kullanılıyor: " + cameraCode);
++    }
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java	2026-07-13 11:53:34.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/exception/GlobalExceptionHandler.java	2026-07-14 07:09:54.617117397 +0000
+@@ -5,6 +5,8 @@
+ import jakarta.validation.ConstraintViolationException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.http.ResponseEntity;
++import org.springframework.http.converter.HttpMessageNotReadableException;
++import org.springframework.web.bind.MethodArgumentNotValidException;
+ import org.springframework.web.bind.MissingServletRequestParameterException;
+ import org.springframework.web.bind.annotation.ExceptionHandler;
+ import org.springframework.web.bind.annotation.RestControllerAdvice;
+@@ -12,30 +14,61 @@
+ import org.springframework.web.multipart.support.MissingServletRequestPartException;
+ 
+ import java.time.Instant;
++import java.util.stream.Collectors;
+ 
+ @RestControllerAdvice
+ public class GlobalExceptionHandler {
+ 
+-    @ExceptionHandler(MediaNotFoundException.class)
++    @ExceptionHandler({MediaNotFoundException.class, CameraNotFoundException.class})
+     public ResponseEntity<ApiErrorResponse> handleNotFound(
+-            MediaNotFoundException exception,
++            RuntimeException exception,
+             HttpServletRequest request
+     ) {
+         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+     }
+ 
++    @ExceptionHandler(DuplicateCameraCodeException.class)
++    public ResponseEntity<ApiErrorResponse> handleConflict(
++            DuplicateCameraCodeException exception,
++            HttpServletRequest request
++    ) {
++        return build(HttpStatus.CONFLICT, exception.getMessage(), request);
++    }
++
++    @ExceptionHandler(MethodArgumentNotValidException.class)
++    public ResponseEntity<ApiErrorResponse> handleValidation(
++            MethodArgumentNotValidException exception,
++            HttpServletRequest request
++    ) {
++        String message = exception.getBindingResult()
++                .getFieldErrors()
++                .stream()
++                .map(error -> error.getDefaultMessage() == null
++                        ? error.getField() + " geçersiz."
++                        : error.getDefaultMessage())
++                .distinct()
++                .collect(Collectors.joining(" "));
++
++        return build(HttpStatus.BAD_REQUEST, message, request);
++    }
++
+     @ExceptionHandler({
+             MediaStorageException.class,
+             ConstraintViolationException.class,
+             MissingServletRequestParameterException.class,
+             MissingServletRequestPartException.class,
++            HttpMessageNotReadableException.class,
+             IllegalArgumentException.class
+     })
+     public ResponseEntity<ApiErrorResponse> handleBadRequest(
+             Exception exception,
+             HttpServletRequest request
+     ) {
+-        return build(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
++        String message = exception instanceof HttpMessageNotReadableException
++                ? "İstek gövdesi okunamadı veya enum değeri geçersiz."
++                : exception.getMessage();
++
++        return build(HttpStatus.BAD_REQUEST, message, request);
+     }
+ 
+     @ExceptionHandler(MaxUploadSizeExceededException.class)
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/Camera.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/Camera.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/Camera.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/Camera.java	2026-07-14 07:09:40.432035233 +0000
+@@ -0,0 +1,50 @@
++package com.omuiotlab.wildlifemediaservice.model;
++
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++import org.springframework.data.annotation.CreatedDate;
++import org.springframework.data.annotation.Id;
++import org.springframework.data.annotation.LastModifiedDate;
++import org.springframework.data.mongodb.core.index.Indexed;
++import org.springframework.data.mongodb.core.mapping.Document;
++
++import java.time.Instant;
++
++@Getter
++@Setter
++@Builder
++@NoArgsConstructor
++@AllArgsConstructor
++@Document(collection = "cameras")
++public class Camera {
++
++    @Id
++    private String id;
++
++    @Indexed(unique = true)
++    private String cameraCode;
++
++    private String name;
++    private String location;
++    private String jitsiRoomName;
++
++    @Builder.Default
++    private CameraStatus status = CameraStatus.OFFLINE;
++
++    private String customerId;
++    private String description;
++
++    @Builder.Default
++    private boolean active = true;
++
++    private Instant lastSeenAt;
++
++    @CreatedDate
++    private Instant createdAt;
++
++    @LastModifiedDate
++    private Instant updatedAt;
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/CameraStatus.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/CameraStatus.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/model/CameraStatus.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/model/CameraStatus.java	2026-07-14 07:09:40.425090713 +0000
+@@ -0,0 +1,7 @@
++package com.omuiotlab.wildlifemediaservice.model;
++
++public enum CameraStatus {
++    ONLINE,
++    OFFLINE,
++    MAINTENANCE
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/repository/CameraRepository.java	2026-07-14 07:09:40.464383953 +0000
+@@ -0,0 +1,18 @@
++package com.omuiotlab.wildlifemediaservice.repository;
++
++import com.omuiotlab.wildlifemediaservice.model.Camera;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import java.util.List;
++import java.util.Optional;
++
++public interface CameraRepository extends MongoRepository<Camera, String> {
++
++    Optional<Camera> findByCameraCodeIgnoreCase(String cameraCode);
++
++    boolean existsByCameraCodeIgnoreCase(String cameraCode);
++
++    List<Camera> findAllByOrderByNameAsc();
++
++    List<Camera> findByActiveTrueOrderByNameAsc();
++}
+diff -ruN wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java
+--- wildlife_patch_original/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java	1970-01-01 00:00:00.000000000 +0000
++++ wildlife_patch_work/src/main/java/com/omuiotlab/wildlifemediaservice/service/CameraService.java	2026-07-14 07:09:40.486578780 +0000
+@@ -0,0 +1,111 @@
++package com.omuiotlab.wildlifemediaservice.service;
++
++import com.omuiotlab.wildlifemediaservice.dto.CameraCreateRequest;
++import com.omuiotlab.wildlifemediaservice.dto.CameraResponse;
++import com.omuiotlab.wildlifemediaservice.exception.CameraNotFoundException;
++import com.omuiotlab.wildlifemediaservice.exception.DuplicateCameraCodeException;
++import com.omuiotlab.wildlifemediaservice.model.Camera;
++import com.omuiotlab.wildlifemediaservice.model.CameraStatus;
++import com.omuiotlab.wildlifemediaservice.repository.CameraRepository;
++import org.springframework.stereotype.Service;
++
++import java.time.Instant;
++import java.util.List;
++import java.util.Locale;
++
++@Service
++public class CameraService {
++
++    private static final String DEFAULT_ROOM_PREFIX = "OMUIoTLabWildlife_";
++
++    private final CameraRepository cameraRepository;
++
++    public CameraService(CameraRepository cameraRepository) {
++        this.cameraRepository = cameraRepository;
++    }
++
++    public CameraResponse create(CameraCreateRequest request) {
++        String cameraCode = normalizeCameraCode(request.cameraCode());
++
++        if (cameraRepository.existsByCameraCodeIgnoreCase(cameraCode)) {
++            throw new DuplicateCameraCodeException(cameraCode);
++        }
++
++        CameraStatus status = request.status() == null
++                ? CameraStatus.OFFLINE
++                : request.status();
++
++        Camera camera = Camera.builder()
++                .cameraCode(cameraCode)
++                .name(request.name().trim())
++                .location(normalizeOptionalText(request.location()))
++                .jitsiRoomName(resolveRoomName(request.jitsiRoomName(), cameraCode))
++                .status(status)
++                .customerId(normalizeOptionalText(request.customerId()))
++                .description(normalizeOptionalText(request.description()))
++                .active(request.active() == null || request.active())
++                .lastSeenAt(status == CameraStatus.ONLINE ? Instant.now() : null)
++                .build();
++
++        return CameraResponse.from(cameraRepository.save(camera));
++    }
++
++    public List<CameraResponse> list(boolean activeOnly) {
++        List<Camera> cameras = activeOnly
++                ? cameraRepository.findByActiveTrueOrderByNameAsc()
++                : cameraRepository.findAllByOrderByNameAsc();
++
++        return cameras.stream()
++                .map(CameraResponse::from)
++                .toList();
++    }
++
++    public CameraResponse getByCameraCode(String cameraCode) {
++        return CameraResponse.from(getCamera(cameraCode));
++    }
++
++    public CameraResponse updateStatus(String cameraCode, CameraStatus status) {
++        Camera camera = getCamera(cameraCode);
++        camera.setStatus(status);
++
++        if (status == CameraStatus.ONLINE) {
++            camera.setLastSeenAt(Instant.now());
++        }
++
++        return CameraResponse.from(cameraRepository.save(camera));
++    }
++
++    public void delete(String cameraCode) {
++        cameraRepository.delete(getCamera(cameraCode));
++    }
++
++    public Camera getCamera(String cameraCode) {
++        String normalizedCode = normalizeCameraCode(cameraCode);
++        return cameraRepository.findByCameraCodeIgnoreCase(normalizedCode)
++                .orElseThrow(() -> new CameraNotFoundException(normalizedCode));
++    }
++
++    private String normalizeCameraCode(String value) {
++        if (value == null || value.isBlank()) {
++            throw new IllegalArgumentException("Fotokapan kodu boş olamaz.");
++        }
++        return value.trim().toUpperCase(Locale.ROOT);
++    }
++
++    private String resolveRoomName(String requestedRoomName, String cameraCode) {
++        String normalizedRoomName = normalizeOptionalText(requestedRoomName);
++        if (normalizedRoomName != null) {
++            return normalizedRoomName;
++        }
++
++        String safeCode = cameraCode.replaceAll("[^A-Za-z0-9]", "");
++        return DEFAULT_ROOM_PREFIX + safeCode;
++    }
++
++    private String normalizeOptionalText(String value) {
++        if (value == null || value.isBlank()) {
++            return null;
++        }
++        return value.trim();
++    }
++}
+diff -ruN wildlife_patch_original/src/main/resources/static/app.js wildlife_patch_work/src/main/resources/static/app.js
+--- wildlife_patch_original/src/main/resources/static/app.js	2026-07-13 13:23:13.000000000 +0000
++++ wildlife_patch_work/src/main/resources/static/app.js	2026-07-14 07:11:21.949241394 +0000
+@@ -4,7 +4,8 @@
+     totalPages: 0,
+     totalElements: 0,
+     mediaType: "",
+-    cameraId: ""
++    cameraId: "",
++    cameras: []
+ };
+ 
+ const gallery = document.querySelector("#gallery");
+@@ -22,6 +23,13 @@
+ const currentViewLabel = document.querySelector("#currentViewLabel");
+ const lastSync = document.querySelector("#lastSync");
+ const resultCount = document.querySelector("#resultCount");
++const cameraDirectoryList = document.querySelector("#cameraDirectoryList");
++const cameraDirectoryEmpty = document.querySelector("#cameraDirectoryEmpty");
++const cameraRowTemplate = document.querySelector("#cameraRowTemplate");
++const cameraOptions = document.querySelector("#cameraOptions");
++const cameraIdInput = document.querySelector("#cameraId");
++const cameraFilterInput = document.querySelector("#cameraFilter");
++const introLiveLink = document.querySelector("#introLiveLink");
+ 
+ function formatDate(value) {
+     if (!value) return "—";
+@@ -75,6 +83,15 @@
+     }
+ }
+ 
++async function readError(response) {
++    try {
++        const body = await response.json();
++        return body.message || body.detail || "İşlem başarısız oldu.";
++    } catch {
++        return "İşlem başarısız oldu.";
++    }
++}
++
+ function createPreview(media) {
+     if (media.mediaType === "VIDEO") {
+         const video = document.createElement("video");
+@@ -98,10 +115,9 @@
+     const fragment = template.content.cloneNode(true);
+     const card = fragment.querySelector(".media-entry");
+     const preview = fragment.querySelector(".media-preview");
+-    const contentUrl = media.contentUrl;
+ 
+     preview.prepend(createPreview(media));
+-    fragment.querySelector(".preview-open").href = contentUrl;
++    fragment.querySelector(".preview-open").href = media.contentUrl;
+     fragment.querySelector(".entry-index").textContent = `KAYIT ${String(position + 1).padStart(2, "0")}`;
+     fragment.querySelector(".media-title").textContent = media.originalFilename;
+     fragment.querySelector(".media-badge").textContent = media.mediaType === "VIDEO" ? "VİDEO" : "FOTOĞRAF";
+@@ -117,9 +133,7 @@
+ 
+         try {
+             const response = await fetchWithTimeout(`/api/media/${media.id}`, { method: "DELETE" }, 8000);
+-            if (!response.ok) {
+-                throw new Error(await readError(response));
+-            }
++            if (!response.ok) throw new Error(await readError(response));
+ 
+             card.remove();
+             await loadMedia();
+@@ -132,12 +146,78 @@
+     return fragment;
+ }
+ 
+-async function readError(response) {
++function cameraStatusLabel(status) {
++    if (status === "ONLINE") return "Çevrimiçi";
++    if (status === "MAINTENANCE") return "Bakımda";
++    return "Çevrimdışı";
++}
++
++function createCameraRow(camera, index) {
++    const fragment = cameraRowTemplate.content.cloneNode(true);
++    const row = fragment.querySelector(".camera-row");
++    const archiveButton = fragment.querySelector(".camera-archive-link");
++
++    row.dataset.status = camera.status || "OFFLINE";
++    fragment.querySelector(".camera-row-index").textContent = String(index + 1).padStart(2, "0");
++    fragment.querySelector(".camera-row-code").textContent = camera.cameraCode;
++    fragment.querySelector(".camera-row-name").textContent = camera.name;
++    fragment.querySelector(".camera-row-location").textContent = camera.location || "Konum bilgisi girilmemiş";
++    fragment.querySelector(".camera-status-text").textContent = cameraStatusLabel(camera.status);
++    fragment.querySelector(".camera-live-link").href = camera.liveUrl;
++
++    archiveButton.addEventListener("click", () => {
++        state.cameraId = camera.cameraCode;
++        state.page = 0;
++        cameraFilterInput.value = camera.cameraCode;
++        window.history.replaceState({}, "", camera.archiveUrl);
++        loadMedia();
++        document.querySelector("#archiveTitle").scrollIntoView({ behavior: "smooth", block: "start" });
++    });
++
++    return fragment;
++}
++
++function renderCameraDirectory(cameras) {
++    cameraDirectoryList.replaceChildren();
++    cameraDirectoryEmpty.hidden = cameras.length !== 0;
++
++    cameras.forEach((camera, index) => {
++        cameraDirectoryList.append(createCameraRow(camera, index));
++    });
++}
++
++function updateCameraInputs(cameras) {
++    cameraOptions.replaceChildren();
++
++    cameras.forEach(camera => {
++        const option = document.createElement("option");
++        option.value = camera.cameraCode;
++        option.label = `${camera.name}${camera.location ? ` · ${camera.location}` : ""}`;
++        cameraOptions.append(option);
++    });
++
++    const preferredCamera = cameras.find(camera => camera.status === "ONLINE") || cameras[0];
++    if (preferredCamera) {
++        introLiveLink.href = preferredCamera.liveUrl;
++        if (!cameraIdInput.value) cameraIdInput.value = preferredCamera.cameraCode;
++    } else {
++        introLiveLink.href = "/live.html";
++    }
++}
++
++async function loadCameras() {
+     try {
+-        const body = await response.json();
+-        return body.message || body.detail || "İşlem başarısız oldu.";
+-    } catch {
+-        return "İşlem başarısız oldu.";
++        const response = await fetchWithTimeout("/api/cameras?activeOnly=true", {}, 8000);
++        if (!response.ok) throw new Error(await readError(response));
++
++        state.cameras = await response.json();
++        renderCameraDirectory(state.cameras);
++        updateCameraInputs(state.cameras);
++    } catch (error) {
++        state.cameras = [];
++        cameraDirectoryList.replaceChildren();
++        cameraDirectoryEmpty.hidden = false;
++        cameraDirectoryEmpty.textContent = error.message || "Fotokapan listesi alınamadı.";
+     }
+ }
+ 
+@@ -226,7 +306,7 @@
+ 
+     const formData = new FormData();
+     formData.append("file", file);
+-    formData.append("cameraId", document.querySelector("#cameraId").value.trim());
++    formData.append("cameraId", cameraIdInput.value.trim());
+     formData.append("description", document.querySelector("#description").value.trim());
+     if (capturedAt) formData.append("capturedAt", new Date(capturedAt).toISOString());
+ 
+@@ -242,7 +322,9 @@
+ 
+         if (!response.ok) throw new Error(await readError(response));
+ 
++        const selectedCameraCode = cameraIdInput.value.trim();
+         event.target.reset();
++        cameraIdInput.value = selectedCameraCode;
+         fileLabel.textContent = "Dosya seçin";
+         state.page = 0;
+         uploadMessage.textContent = "Medya kaydı başarıyla oluşturuldu.";
+@@ -260,8 +342,14 @@
+ document.querySelector("#filterForm").addEventListener("submit", event => {
+     event.preventDefault();
+     state.mediaType = document.querySelector("#mediaType").value;
+-    state.cameraId = document.querySelector("#cameraFilter").value.trim();
++    state.cameraId = cameraFilterInput.value.trim();
+     state.page = 0;
++
++    const url = new URL(window.location.href);
++    if (state.cameraId) url.searchParams.set("cameraCode", state.cameraId);
++    else url.searchParams.delete("cameraCode");
++    window.history.replaceState({}, "", url);
++
+     loadMedia();
+ });
+ 
+@@ -295,13 +383,13 @@
+             }
+         }
+     } catch {
+-        // Actuator erişimi başarısızsa doğrudan gerçek API ile ikinci kontrol yapılır.
++        // Actuator erişimi başarısızsa gerçek API ile ikinci kontrol yapılır.
+     }
+ 
+     try {
+-        const apiResponse = await fetchWithTimeout(`/api/media?page=0&size=1&_=${Date.now()}`, {}, 5000);
++        const apiResponse = await fetchWithTimeout(`/api/cameras?activeOnly=true&_=${Date.now()}`, {}, 5000);
+         if (apiResponse.ok) {
+-            setServiceStatus("online", "Medya servisi hazır");
++            setServiceStatus("online", "Uygulama servisi hazır");
+             return;
+         }
+     } catch {
+@@ -311,6 +399,20 @@
+     setServiceStatus("offline", "Servise ulaşılamıyor");
+ }
+ 
+-checkService();
+-loadMedia();
++function readInitialArchiveState() {
++    const params = new URLSearchParams(window.location.search);
++    const requestedCameraCode = params.get("cameraCode");
++    if (!requestedCameraCode) return;
++
++    state.cameraId = requestedCameraCode.trim();
++    cameraFilterInput.value = state.cameraId;
++}
++
++async function initialize() {
++    readInitialArchiveState();
++    await Promise.allSettled([loadCameras(), checkService()]);
++    await loadMedia();
++}
++
++initialize();
+ window.setInterval(checkService, 30000);
+diff -ruN wildlife_patch_original/src/main/resources/static/index.html wildlife_patch_work/src/main/resources/static/index.html
+--- wildlife_patch_original/src/main/resources/static/index.html	2026-07-14 06:58:49.000000000 +0000
++++ wildlife_patch_work/src/main/resources/static/index.html	2026-07-14 07:10:31.977800002 +0000
+@@ -3,7 +3,7 @@
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-    <meta name="description" content="Fotokapan görüntülerini ve kısa videoları arşivlemek için medya yönetim servisi.">
++    <meta name="description" content="Fotokapan görüntülerini, kısa videoları ve canlı yayınları yöneten medya servisi.">
+     <title>Fotokapan Arşivi · OMÜ IoT Lab</title>
+     <link rel="stylesheet" href="/styles.css">
+ </head>
+@@ -41,10 +41,10 @@
+                 tek bir kronolojik koleksiyonda saklayın, inceleyin ve yönetin.
+             </p>
+             <div class="intro-actions">
+-                <a class="intro-live-link" href="/live.html?camera=CAM-TR-001&mode=viewer">
++                <a id="introLiveLink" class="intro-live-link" href="/live.html">
+                     Canlı fotokapanı izle <span aria-hidden="true">↗</span>
+                 </a>
+-                <span>Jitsi tabanlı test yayını</span>
++                <span>MongoDB’den yönetilen Jitsi odaları</span>
+             </div>
+         </div>
+         <div class="intro-meta" aria-label="Arşiv özeti">
+@@ -63,10 +63,25 @@
+         </div>
+     </section>
+ 
++    <section class="camera-directory" aria-labelledby="cameraDirectoryTitle">
++        <header class="camera-directory-heading">
++            <div>
++                <div class="section-number">02 / FOTOKAPANLAR</div>
++                <h2 id="cameraDirectoryTitle">Saha bağlantıları</h2>
++            </div>
++            <p>Aktif fotokapanları, canlı bağlantı durumlarını ve kamera bazlı arşivleri görüntüleyin.</p>
++        </header>
++
++        <div id="cameraDirectoryList" class="camera-directory-list" aria-live="polite"></div>
++        <div id="cameraDirectoryEmpty" class="camera-directory-empty" hidden>
++            Henüz aktif bir fotokapan kaydı bulunmuyor.
++        </div>
++    </section>
++
+     <main class="workspace">
+         <aside class="ingest-column" aria-labelledby="uploadTitle">
+             <div class="sticky-panel">
+-                <div class="section-number">02 / YENİ KAYIT</div>
++                <div class="section-number">03 / YENİ KAYIT</div>
+                 <h2 id="uploadTitle">Sahadan medya ekle</h2>
+                 <p class="section-lead">Dosya ile fotokapan bilgisini eşleştirerek arşive yeni kayıt oluşturun.</p>
+ 
+@@ -84,7 +99,7 @@
+                     <label class="field">
+                         <span>Fotokapan kimliği</span>
+                         <input id="cameraId" name="cameraId" type="text" maxlength="80"
+-                               placeholder="CAM-TR-001" autocomplete="off" required>
++                               list="cameraOptions" placeholder="CAM-TR-001" autocomplete="off" required>
+                     </label>
+ 
+                     <label class="field">
+@@ -110,7 +125,7 @@
+         <section class="archive-column" aria-labelledby="archiveTitle">
+             <div class="archive-header">
+                 <div>
+-                    <div class="section-number">03 / KOLEKSİYON</div>
++                    <div class="section-number">04 / KOLEKSİYON</div>
+                     <h2 id="archiveTitle">Kayıtlar</h2>
+                 </div>
+                 <p><span id="resultCount">0</span> sonuç görüntüleniyor</p>
+@@ -128,12 +143,15 @@
+ 
+                 <label class="search-field">
+                     <span>Fotokapan</span>
+-                    <input id="cameraFilter" type="search" placeholder="Kimlik ile ara" autocomplete="off">
++                    <input id="cameraFilter" type="search" list="cameraOptions"
++                           placeholder="Kimlik ile ara" autocomplete="off">
+                 </label>
+ 
+                 <button type="submit" class="filter-action">Görünümü güncelle</button>
+             </form>
+ 
++            <datalist id="cameraOptions"></datalist>
++
+             <div id="emptyState" class="empty-state" hidden>
+                 <span>Arşiv boş</span>
+                 <p>Bu filtrelerle eşleşen bir medya kaydı bulunamadı.</p>
+@@ -155,6 +173,25 @@
+     </footer>
+ </div>
+ 
++<template id="cameraRowTemplate">
++    <article class="camera-row">
++        <div class="camera-row-index"></div>
++        <div class="camera-row-identity">
++            <span class="camera-row-code"></span>
++            <h3 class="camera-row-name"></h3>
++        </div>
++        <div class="camera-row-location"></div>
++        <div class="camera-row-status">
++            <span class="camera-status-dot" aria-hidden="true"></span>
++            <span class="camera-status-text"></span>
++        </div>
++        <div class="camera-row-actions">
++            <a class="camera-live-link" href="#">Canlı izle ↗</a>
++            <button class="camera-archive-link" type="button">Arşivi aç →</button>
++        </div>
++    </article>
++</template>
++
+ <template id="mediaCardTemplate">
+     <article class="media-entry">
+         <div class="media-preview">
+diff -ruN wildlife_patch_original/src/main/resources/static/live.html wildlife_patch_work/src/main/resources/static/live.html
+--- wildlife_patch_original/src/main/resources/static/live.html	2026-07-14 06:58:49.000000000 +0000
++++ wildlife_patch_work/src/main/resources/static/live.html	2026-07-14 07:11:30.745374232 +0000
+@@ -45,8 +45,8 @@
+             <div class="live-control-panel">
+                 <div class="control-group">
+                     <label for="liveCamera">Fotokapan</label>
+-                    <select id="liveCamera">
+-                        <option value="CAM-TR-001">CAM-TR-001 · Demo fotokapan</option>
++                    <select id="liveCamera" disabled>
++                        <option value="">Fotokapanlar yükleniyor…</option>
+                     </select>
+                 </div>
+ 
+@@ -78,8 +78,8 @@
+                 <div class="live-note">
+                     <strong>Test akışı</strong>
+                     <p>
+-                        Önce telefon veya ikinci tarayıcıdan “Kamera olarak yayınla” seçeneğiyle katılın.
+-                        Ardından bu ekranda “Müşteri olarak izle” ile aynı odayı açın.
++                        Fotokapanlar MongoDB’den yüklenir. Önce telefon veya ikinci tarayıcıdan “Kamera olarak yayınla”
++                        seçeneğiyle katılın; ardından müşteri ekranından aynı fotokapanı seçin.
+                     </p>
+                 </div>
+             </div>
+@@ -87,7 +87,7 @@
+             <div class="live-stage-wrap">
+                 <div class="live-stage-bar">
+                     <div>
+-                        <span id="liveCameraLabel">CAM-TR-001</span>
++                        <span id="liveCameraLabel">Fotokapan seçilmedi</span>
+                         <small id="liveModeLabel">İzleyici modu</small>
+                     </div>
+                     <div class="participant-counter">
+diff -ruN wildlife_patch_original/src/main/resources/static/live.js wildlife_patch_work/src/main/resources/static/live.js
+--- wildlife_patch_original/src/main/resources/static/live.js	2026-07-14 06:58:49.000000000 +0000
++++ wildlife_patch_work/src/main/resources/static/live.js	2026-07-14 07:12:07.846830349 +0000
+@@ -1,5 +1,4 @@
+ const JITSI_DOMAIN = "meet.jit.si";
+-const ROOM_PREFIX = "OMUIoTLabWildlife";
+ 
+ const cameraSelect = document.querySelector("#liveCamera");
+ const startButton = document.querySelector("#startLiveButton");
+@@ -16,22 +15,12 @@
+ const modeButtons = [...document.querySelectorAll(".mode-button")];
+ 
+ let selectedMode = "viewer";
++let selectedCamera = null;
++let cameras = [];
+ let jitsiApi = null;
+ let participants = new Set();
+ let scriptPromise = null;
+ 
+-function sanitizeRoomPart(value) {
+-    return value.normalize("NFKD").replace(/[^a-zA-Z0-9]/g, "");
+-}
+-
+-function getRoomName() {
+-    return `${ROOM_PREFIX}_${sanitizeRoomPart(cameraSelect.value)}`;
+-}
+-
+-function getRoomUrl() {
+-    return `https://${JITSI_DOMAIN}/${encodeURIComponent(getRoomName())}`;
+-}
+-
+ function setConnectionStatus(mode, text) {
+     connectionStatus.className = `service-status is-${mode}`;
+     connectionStatusCopy.textContent = text;
+@@ -42,16 +31,53 @@
+     message.className = `live-message${type ? ` ${type}` : ""}`;
+ }
+ 
+-function updateRoomLinks() {
+-    cameraLabel.textContent = cameraSelect.value;
+-    modeLabel.textContent = selectedMode === "publisher" ? "Yayıncı modu" : "İzleyici modu";
+-    openJitsiTab.href = getRoomUrl();
++async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
++    const controller = new AbortController();
++    const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
++
++    try {
++        return await fetch(url, {
++            cache: "no-store",
++            ...options,
++            signal: controller.signal
++        });
++    } finally {
++        window.clearTimeout(timeout);
++    }
++}
++
++async function readError(response) {
++    try {
++        const body = await response.json();
++        return body.message || body.detail || "İşlem başarısız oldu.";
++    } catch {
++        return "İşlem başarısız oldu.";
++    }
++}
++
++function getRoomName() {
++    return selectedCamera?.jitsiRoomName || "";
++}
++
++function getRoomUrl() {
++    const roomName = getRoomName();
++    return roomName ? `https://${JITSI_DOMAIN}/${encodeURIComponent(roomName)}` : "#";
+ }
+ 
+ function updateParticipantCount() {
+     participantCount.textContent = String(participants.size);
+ }
+ 
++function updateRoomLinks() {
++    cameraLabel.textContent = selectedCamera
++        ? `${selectedCamera.cameraCode} · ${selectedCamera.name}`
++        : "Fotokapan seçilmedi";
++
++    modeLabel.textContent = selectedMode === "publisher" ? "Yayıncı modu" : "İzleyici modu";
++    openJitsiTab.href = getRoomUrl();
++    startButton.disabled = !selectedCamera;
++}
++
+ function selectMode(mode) {
+     selectedMode = mode;
+     modeButtons.forEach(button => {
+@@ -62,16 +88,74 @@
+     updateRoomLinks();
+ }
+ 
+-function readInitialState() {
+-    const params = new URLSearchParams(window.location.search);
+-    const requestedCamera = params.get("camera");
+-    const requestedMode = params.get("mode");
++function selectCamera(cameraCode) {
++    selectedCamera = cameras.find(camera => camera.cameraCode === cameraCode) || null;
++    if (selectedCamera) cameraSelect.value = selectedCamera.cameraCode;
++    updateRoomLinks();
++}
+ 
+-    if (requestedCamera && [...cameraSelect.options].some(option => option.value === requestedCamera)) {
+-        cameraSelect.value = requestedCamera;
++function populateCameraSelect(requestedCameraCode) {
++    cameraSelect.replaceChildren();
++
++    if (cameras.length === 0) {
++        const option = document.createElement("option");
++        option.value = "";
++        option.textContent = "Aktif fotokapan bulunamadı";
++        cameraSelect.append(option);
++        cameraSelect.disabled = true;
++        selectCamera("");
++        return;
+     }
+ 
+-    selectMode(requestedMode === "publisher" ? "publisher" : "viewer");
++    cameras.forEach(camera => {
++        const option = document.createElement("option");
++        option.value = camera.cameraCode;
++        option.textContent = `${camera.cameraCode} · ${camera.name} · ${statusLabel(camera.status)}`;
++        cameraSelect.append(option);
++    });
++
++    cameraSelect.disabled = false;
++    const requestedExists = cameras.some(camera => camera.cameraCode === requestedCameraCode);
++    const onlineCamera = cameras.find(camera => camera.status === "ONLINE");
++    const initialCamera = requestedExists
++        ? requestedCameraCode
++        : (onlineCamera || cameras[0]).cameraCode;
++
++    selectCamera(initialCamera);
++}
++
++function statusLabel(status) {
++    if (status === "ONLINE") return "Çevrimiçi";
++    if (status === "MAINTENANCE") return "Bakımda";
++    return "Çevrimdışı";
++}
++
++async function loadCameras(requestedCameraCode) {
++    setConnectionStatus("checking", "Fotokapanlar yükleniyor");
++
++    try {
++        const response = await fetchWithTimeout("/api/cameras?activeOnly=true");
++        if (!response.ok) throw new Error(await readError(response));
++
++        cameras = await response.json();
++        populateCameraSelect(requestedCameraCode);
++
++        if (selectedCamera) {
++            setConnectionStatus(
++                selectedCamera.status === "ONLINE" ? "online" : "checking",
++                `${selectedCamera.cameraCode} · ${statusLabel(selectedCamera.status)}`
++            );
++            setMessage("Fotokapan bilgileri MongoDB üzerinden yüklendi.", "success");
++        } else {
++            setConnectionStatus("offline", "Aktif fotokapan yok");
++            setMessage("Canlı bağlantı için önce /api/cameras üzerinden bir fotokapan oluşturun.", "error");
++        }
++    } catch (error) {
++        cameras = [];
++        populateCameraSelect("");
++        setConnectionStatus("offline", "Fotokapan servisine ulaşılamıyor");
++        setMessage(error.message || "Fotokapan listesi alınamadı.", "error");
++    }
+ }
+ 
+ function loadJitsiScript() {
+@@ -100,9 +184,18 @@
+     updateParticipantCount();
+     stage.replaceChildren(placeholder);
+     placeholder.hidden = false;
+-    startButton.disabled = false;
+     leaveButton.disabled = true;
+-    setConnectionStatus("checking", "Yayın başlatılmadı");
++    cameraSelect.disabled = cameras.length === 0;
++    startButton.disabled = !selectedCamera;
++
++    if (selectedCamera) {
++        setConnectionStatus(
++            selectedCamera.status === "ONLINE" ? "online" : "checking",
++            `${selectedCamera.cameraCode} · ${statusLabel(selectedCamera.status)}`
++        );
++    } else {
++        setConnectionStatus("offline", "Aktif fotokapan yok");
++    }
+ }
+ 
+ function createJitsiOptions() {
+@@ -116,8 +209,8 @@
+         lang: "tr",
+         userInfo: {
+             displayName: isPublisher
+-                ? `${cameraSelect.value} · Fotokapan Yayını`
+-                : "Müşteri İzleyici"
++                ? `${selectedCamera.cameraCode} · Fotokapan Yayını`
++                : `${selectedCamera.cameraCode} · Müşteri İzleyici`
+         },
+         configOverwrite: {
+             startWithAudioMuted: true,
+@@ -176,15 +269,14 @@
+         setMessage("Canlı bağlantı sonlandırıldı.");
+     });
+ 
+-    api.addListener("readyToClose", () => {
+-        disposeMeeting();
+-    });
++    api.addListener("readyToClose", disposeMeeting);
+ }
+ 
+ async function startMeeting() {
+-    if (jitsiApi) return;
++    if (jitsiApi || !selectedCamera) return;
+ 
+     startButton.disabled = true;
++    cameraSelect.disabled = true;
+     setConnectionStatus("checking", "Jitsi bağlantısı kuruluyor");
+     setMessage("Canlı yayın bileşeni yükleniyor…");
+ 
+@@ -215,12 +307,26 @@
+ 
+ cameraSelect.addEventListener("change", () => {
+     if (jitsiApi) disposeMeeting();
+-    updateRoomLinks();
++    selectCamera(cameraSelect.value);
++
++    const url = new URL(window.location.href);
++    url.searchParams.set("camera", cameraSelect.value);
++    url.searchParams.set("mode", selectedMode);
++    window.history.replaceState({}, "", url);
+ });
+ 
+ startButton.addEventListener("click", startMeeting);
+ leaveButton.addEventListener("click", disposeMeeting);
+ window.addEventListener("beforeunload", () => jitsiApi?.dispose());
+ 
+-readInitialState();
+-updateRoomLinks();
++async function initialize() {
++    const params = new URLSearchParams(window.location.search);
++    const requestedCamera = params.get("camera") || "";
++    const requestedMode = params.get("mode");
++
++    selectMode(requestedMode === "publisher" ? "publisher" : "viewer");
++    await loadCameras(requestedCamera);
++    updateRoomLinks();
++}
++
++initialize();
+diff -ruN wildlife_patch_original/src/main/resources/static/styles.css wildlife_patch_work/src/main/resources/static/styles.css
+--- wildlife_patch_original/src/main/resources/static/styles.css	2026-07-14 06:58:49.000000000 +0000
++++ wildlife_patch_work/src/main/resources/static/styles.css	2026-07-14 07:12:35.742457914 +0000
+@@ -1364,3 +1364,192 @@
+         min-height: 420px;
+     }
+ }
++
++/* =========================================================
++   CAMERA DIRECTORY PATCH
++   ========================================================= */
++
++.camera-directory {
++    padding: 58px var(--gutter) 70px;
++    border-bottom: 1px solid var(--line);
++    background: var(--paper-deep);
++}
++
++.camera-directory-heading {
++    display: grid;
++    grid-template-columns: minmax(0, 0.72fr) minmax(280px, 0.4fr);
++    gap: clamp(30px, 6vw, 100px);
++    align-items: end;
++    padding-bottom: 34px;
++    border-bottom: 1px solid var(--ink);
++}
++
++.camera-directory-heading h2 {
++    margin: 14px 0 0;
++    font-family: var(--font-display);
++    font-size: clamp(42px, 5.5vw, 78px);
++    font-weight: 400;
++    line-height: 0.95;
++    letter-spacing: -0.045em;
++}
++
++.camera-directory-heading p {
++    max-width: 520px;
++    margin: 0;
++    color: var(--ink-soft);
++}
++
++.camera-directory-list {
++    display: grid;
++}
++
++.camera-row {
++    min-height: 126px;
++    display: grid;
++    grid-template-columns: 52px minmax(220px, 1.2fr) minmax(170px, 0.75fr) minmax(140px, 0.55fr) auto;
++    gap: clamp(20px, 3vw, 52px);
++    align-items: center;
++    border-bottom: 1px solid var(--line);
++    transition: background 160ms ease, padding-inline 160ms ease;
++}
++
++.camera-row:hover {
++    margin-inline: calc(var(--gutter) * -0.18);
++    padding-inline: calc(var(--gutter) * 0.18);
++    background: rgba(255, 255, 255, 0.38);
++}
++
++.camera-row-index,
++.camera-row-code,
++.camera-row-location,
++.camera-status-text {
++    font-size: 11px;
++    font-weight: 750;
++    letter-spacing: 0.12em;
++    text-transform: uppercase;
++}
++
++.camera-row-index {
++    color: var(--copper-dark);
++}
++
++.camera-row-code {
++    display: block;
++    color: var(--ink-soft);
++}
++
++.camera-row-name {
++    margin: 8px 0 0;
++    font-family: var(--font-display);
++    font-size: clamp(25px, 2.4vw, 38px);
++    font-weight: 400;
++    line-height: 1;
++    letter-spacing: -0.035em;
++}
++
++.camera-row-location {
++    color: var(--ink-soft);
++    line-height: 1.6;
++}
++
++.camera-row-status {
++    display: inline-flex;
++    align-items: center;
++    gap: 10px;
++}
++
++.camera-status-dot {
++    width: 9px;
++    height: 9px;
++    border-radius: 50%;
++    background: #818789;
++}
++
++.camera-row[data-status="ONLINE"] .camera-status-dot {
++    background: var(--signal);
++    box-shadow: 0 0 0 5px rgba(36, 135, 92, 0.12);
++}
++
++.camera-row[data-status="MAINTENANCE"] .camera-status-dot {
++    background: var(--copper);
++    box-shadow: 0 0 0 5px rgba(197, 103, 63, 0.12);
++}
++
++.camera-row[data-status="OFFLINE"] .camera-status-dot {
++    background: var(--danger);
++    box-shadow: 0 0 0 5px rgba(169, 56, 46, 0.1);
++}
++
++.camera-row-actions {
++    display: flex;
++    align-items: center;
++    justify-content: flex-end;
++    gap: 18px;
++    white-space: nowrap;
++}
++
++.camera-live-link,
++.camera-archive-link {
++    padding: 10px 0;
++    background: transparent;
++    border: 0;
++    color: var(--ink);
++    cursor: pointer;
++    font-size: 13px;
++    font-weight: 750;
++    text-decoration: none;
++}
++
++.camera-live-link {
++    color: var(--copper-dark);
++}
++
++.camera-live-link:hover,
++.camera-archive-link:hover {
++    text-decoration: underline;
++    text-underline-offset: 4px;
++}
++
++.camera-directory-empty {
++    padding: 42px 0;
++    color: var(--ink-soft);
++    border-bottom: 1px solid var(--line);
++}
++
++@media (max-width: 1080px) {
++    .camera-row {
++        grid-template-columns: 42px minmax(220px, 1fr) minmax(130px, 0.6fr) auto;
++    }
++
++    .camera-row-location {
++        display: none;
++    }
++}
++
++@media (max-width: 760px) {
++    .camera-directory {
++        padding-top: 44px;
++        padding-bottom: 52px;
++    }
++
++    .camera-directory-heading {
++        grid-template-columns: 1fr;
++        gap: 20px;
++    }
++
++    .camera-row {
++        padding: 24px 0;
++        grid-template-columns: 34px minmax(0, 1fr);
++        gap: 12px 18px;
++    }
++
++    .camera-row-status,
++    .camera-row-actions {
++        grid-column: 2;
++        justify-content: flex-start;
++    }
++
++    .camera-row-actions {
++        flex-wrap: wrap;
++    }
++}

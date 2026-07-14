@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Fotokapan canlı yayınını Jitsi Meet üzerinden izleme ekranı.">
+    <title>Canlı Gözlem · Wildlife Archive</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="live-page">
+<div class="page-shell">
+    <header class="masthead">
+        <a class="brand" href="/" aria-label="Fotokapan Arşivi ana sayfa">
+            <span class="brand-mark" aria-hidden="true">WA</span>
+            <span>
+                <strong>Wildlife Archive</strong>
+                <small>OMÜ IoT Lab</small>
+            </span>
+        </a>
+
+        <div class="masthead-actions">
+            <nav class="primary-nav" aria-label="Ana navigasyon">
+                <a class="nav-link" href="/">Arşiv</a>
+                <a class="nav-link is-active" href="/live.html">Canlı gözlem</a>
+                <a class="nav-link" href="/admin.html" data-admin-only hidden>Yönetim</a>
+            </nav>
+            <div id="liveConnectionStatus" class="service-status is-checking" role="status" aria-live="polite">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span class="status-copy">Yayın başlatılmadı</span>
+            </div>
+            <div class="session-account" aria-label="Oturum bilgisi">
+                <span>
+                    <strong data-session-name>Hesap yükleniyor</strong>
+                    <small data-session-role>—</small>
+                </span>
+                <button class="session-logout" type="button" data-logout>Çıkış</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="live-workspace">
+        <section class="live-heading" aria-labelledby="liveTitle">
+            <div class="section-number">04 / CANLI GÖZLEM</div>
+            <p class="kicker">Jitsi Meet prototipi</p>
+            <h1 id="liveTitle">Sahaya<br>anlık bağlantı</h1>
+            <p>
+                Aynı kamera odasına bir cihaz yayıncı olarak, müşteri ise izleyici olarak katılır.
+                Fotoğraf ve geçmiş video kayıtları arşiv ekranında tutulmaya devam eder.
+            </p>
+        </section>
+
+        <section class="live-console" aria-label="Canlı yayın kontrolü">
+            <div class="live-control-panel">
+                <div class="control-group">
+                    <label for="liveCamera">Fotokapan</label>
+                    <select id="liveCamera" disabled>
+                        <option value="">Fotokapanlar yükleniyor…</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <span class="control-label">Bağlantı biçimi</span>
+                    <div class="mode-switch" role="group" aria-label="Bağlantı biçimi">
+                        <button id="viewerMode" class="mode-button is-selected" type="button" data-mode="viewer">
+                            Müşteri olarak izle
+                        </button>
+                        <button id="publisherMode" class="mode-button" type="button" data-mode="publisher">
+                            Kamera olarak yayınla
+                        </button>
+                    </div>
+                </div>
+
+                <div class="live-actions">
+                    <button id="startLiveButton" class="primary-action" type="button">
+                        <span>Canlı bağlantıyı başlat</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                    <button id="leaveLiveButton" class="secondary-action" type="button" disabled>
+                        Yayından ayrıl
+                    </button>
+                    <a id="openJitsiTab" class="text-action" href="#" target="_blank" rel="noopener">
+                        Jitsi odasını yeni sekmede aç ↗
+                    </a>
+                </div>
+
+                <div class="live-note">
+                    <strong>Test akışı</strong>
+                    <p>
+                        Fotokapanlar MongoDB’den yüklenir. Önce telefon veya ikinci tarayıcıdan “Kamera olarak yayınla”
+                        seçeneğiyle katılın; ardından müşteri ekranından aynı fotokapanı seçin.
+                    </p>
+                </div>
+            </div>
+
+            <div class="live-stage-wrap">
+                <div class="live-stage-bar">
+                    <div>
+                        <span id="liveCameraLabel">Fotokapan seçilmedi</span>
+                        <small id="liveModeLabel">İzleyici modu</small>
+                    </div>
+                    <div class="participant-counter">
+                        <span id="participantCount">0</span>
+                        <small>katılımcı</small>
+                    </div>
+                </div>
+
+                <div id="jitsiStage" class="jitsi-stage">
+                    <div id="jitsiPlaceholder" class="jitsi-placeholder">
+                        <span class="placeholder-index">LIVE</span>
+                        <h2>Canlı yayın hazır</h2>
+                        <p>Bağlantıyı başlatmak için soldaki düğmeyi kullanın.</p>
+                    </div>
+                </div>
+
+                <p id="liveMessage" class="live-message" role="status" aria-live="polite"></p>
+            </div>
+        </section>
+
+        <section class="live-architecture" aria-labelledby="architectureTitle">
+            <div>
+                <span>01</span>
+                <h2 id="architectureTitle">Yayın cihazı</h2>
+                <p>Telefon, bilgisayar veya ileride fotokapan adaptörü Jitsi odasına video gönderir.</p>
+            </div>
+            <div>
+                <span>02</span>
+                <h2>Jitsi odası</h2>
+                <p>WebRTC bağlantısını kurar ve aynı kamera odasındaki katılımcıları buluşturur.</p>
+            </div>
+            <div>
+                <span>03</span>
+                <h2>Müşteri ekranı</h2>
+                <p>Müşteri canlı görüntüyü siteden izler; eski kayıtlar arşiv ekranından açılır.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span>OMÜ Sistemler ve Ağ Araştırma Laboratuvarı</span>
+        <span>Jitsi canlı gözlem prototipi · 2026</span>
+    </footer>
+</div>
+
+<script src="/session.js"></script>
+<script src="/live.js"></script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Fotokapan görüntülerini, kısa videoları ve canlı yayınları yöneten medya servisi.">
+    <title>Fotokapan Arşivi · OMÜ IoT Lab</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="page-shell">
+    <header class="masthead">
+        <a class="brand" href="/" aria-label="Fotokapan Arşivi ana sayfa">
+            <span class="brand-mark" aria-hidden="true">WA</span>
+            <span>
+                <strong>Wildlife Archive</strong>
+                <small>OMÜ IoT Lab</small>
+            </span>
+        </a>
+
+        <div class="masthead-actions">
+            <nav class="primary-nav" aria-label="Ana navigasyon">
+                <a class="nav-link is-active" href="/">Arşiv</a>
+                <a class="nav-link" href="/live.html">Canlı gözlem</a>
+                <a class="nav-link" href="/admin.html" data-admin-only hidden>Yönetim</a>
+            </nav>
+
+            <div id="serviceStatus" class="service-status is-checking" role="status" aria-live="polite">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span class="status-copy">Bağlantı kontrol ediliyor</span>
+            </div>
+            <div class="session-account" aria-label="Oturum bilgisi">
+                <span>
+                    <strong data-session-name>Hesap yükleniyor</strong>
+                    <small data-session-role>—</small>
+                </span>
+                <button class="session-logout" type="button" data-logout>Çıkış</button>
+            </div>
+        </div>
+    </header>
+
+    <section class="intro" aria-labelledby="pageTitle">
+        <div class="intro-index" aria-hidden="true">01</div>
+        <div class="intro-copy">
+            <p class="kicker">Saha gözlem koleksiyonu</p>
+            <h1 id="pageTitle">Fotokapan<br>medya arşivi</h1>
+            <p class="intro-text">
+                Vahşi yaşam araştırmalarında elde edilen fotoğraf ve kısa videoları
+                tek bir kronolojik koleksiyonda saklayın, inceleyin ve yönetin.
+            </p>
+            <div class="intro-actions">
+                <a id="introLiveLink" class="intro-live-link" href="/live.html">
+                    Canlı fotokapanı izle <span aria-hidden="true">↗</span>
+                </a>
+                <span>MongoDB’den yönetilen Jitsi odaları</span>
+            </div>
+        </div>
+        <div class="intro-meta" aria-label="Arşiv özeti">
+            <div>
+                <span id="totalMediaCount" class="metric-value">—</span>
+                <span class="metric-label">toplam kayıt</span>
+            </div>
+            <div>
+                <span id="currentViewLabel" class="metric-value metric-text">Tümü</span>
+                <span class="metric-label">aktif görünüm</span>
+            </div>
+            <div>
+                <span id="lastSync" class="metric-value metric-text">—</span>
+                <span class="metric-label">son senkronizasyon</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="camera-directory" aria-labelledby="cameraDirectoryTitle">
+        <header class="camera-directory-heading">
+            <div>
+                <div class="section-number">02 / FOTOKAPANLAR</div>
+                <h2 id="cameraDirectoryTitle">Saha bağlantıları</h2>
+            </div>
+            <p>Aktif fotokapanları, canlı bağlantı durumlarını ve kamera bazlı arşivleri görüntüleyin.</p>
+        </header>
+
+        <div id="cameraDirectoryList" class="camera-directory-list" aria-live="polite"></div>
+        <div id="cameraDirectoryEmpty" class="camera-directory-empty" hidden>
+            Henüz aktif bir fotokapan kaydı bulunmuyor.
+        </div>
+    </section>
+
+    <main class="workspace">
+        <aside class="ingest-column" aria-labelledby="uploadTitle">
+            <div class="sticky-panel">
+                <div class="section-number">03 / YENİ KAYIT</div>
+                <h2 id="uploadTitle">Sahadan medya ekle</h2>
+                <p class="section-lead">Dosya ile fotokapan bilgisini eşleştirerek arşive yeni kayıt oluşturun.</p>
+
+                <form id="uploadForm" class="upload-form">
+                    <label class="file-drop" for="file">
+                        <input id="file" name="file" type="file"
+                               accept="image/jpeg,image/png,image/webp,video/mp4" required>
+                        <span class="file-drop-icon" aria-hidden="true">↗</span>
+                        <span class="file-drop-copy">
+                            <strong id="fileLabel">Dosya seçin</strong>
+                            <small>JPG, PNG, WEBP veya kısa MP4</small>
+                        </span>
+                    </label>
+
+                    <label class="field">
+                        <span>Fotokapan kimliği</span>
+                        <input id="cameraId" name="cameraId" type="text" maxlength="80"
+                               list="cameraOptions" placeholder="CAM-TR-001" autocomplete="off" required>
+                    </label>
+
+                    <label class="field">
+                        <span>Yakalanma zamanı</span>
+                        <input id="capturedAt" name="capturedAt" type="datetime-local">
+                    </label>
+
+                    <label class="field">
+                        <span>Saha notu</span>
+                        <textarea id="description" name="description" rows="4" maxlength="500"
+                                  placeholder="Konum, tür tahmini veya gözlem notu"></textarea>
+                    </label>
+
+                    <button id="uploadButton" class="primary-action" type="submit">
+                        <span>Arşive kaydet</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                    <p id="uploadMessage" class="form-message" role="status" aria-live="polite"></p>
+                </form>
+            </div>
+        </aside>
+
+        <section class="archive-column" aria-labelledby="archiveTitle">
+            <div class="archive-header">
+                <div>
+                    <div class="section-number">04 / KOLEKSİYON</div>
+                    <h2 id="archiveTitle">Kayıtlar</h2>
+                </div>
+                <p><span id="resultCount">0</span> sonuç görüntüleniyor</p>
+            </div>
+
+            <form id="filterForm" class="archive-toolbar" aria-label="Medya filtreleri">
+                <label>
+                    <span>Tür</span>
+                    <select id="mediaType" aria-label="Medya türü">
+                        <option value="">Tüm kayıtlar</option>
+                        <option value="IMAGE">Fotoğraflar</option>
+                        <option value="VIDEO">Videolar</option>
+                    </select>
+                </label>
+
+                <label class="search-field">
+                    <span>Fotokapan</span>
+                    <input id="cameraFilter" type="search" list="cameraOptions"
+                           placeholder="Kimlik ile ara" autocomplete="off">
+                </label>
+
+                <button type="submit" class="filter-action">Görünümü güncelle</button>
+            </form>
+
+            <datalist id="cameraOptions"></datalist>
+
+            <div id="emptyState" class="empty-state" hidden>
+                <span>Arşiv boş</span>
+                <p>Bu filtrelerle eşleşen bir medya kaydı bulunamadı.</p>
+            </div>
+
+            <div id="gallery" class="archive-grid" aria-live="polite"></div>
+
+            <nav class="pagination" aria-label="Arşiv sayfaları">
+                <button id="previousPage" type="button" class="page-action">← Önceki</button>
+                <span id="pageInfo">01 / 01</span>
+                <button id="nextPage" type="button" class="page-action">Sonraki →</button>
+            </nav>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span>OMÜ Sistemler ve Ağ Araştırma Laboratuvarı</span>
+        <span>Wildlife Media Service · 2026</span>
+    </footer>
+</div>
+
+<template id="cameraRowTemplate">
+    <article class="camera-row">
+        <div class="camera-row-index"></div>
+        <div class="camera-row-identity">
+            <span class="camera-row-code"></span>
+            <h3 class="camera-row-name"></h3>
+        </div>
+        <div class="camera-row-location"></div>
+        <div class="camera-row-status">
+            <span class="camera-status-dot" aria-hidden="true"></span>
+            <span class="camera-status-text"></span>
+        </div>
+        <div class="camera-row-actions">
+            <a class="camera-live-link" href="#">Canlı izle ↗</a>
+            <button class="camera-archive-link" type="button">Arşivi aç →</button>
+        </div>
+    </article>
+</template>
+
+<template id="mediaCardTemplate">
+    <article class="media-entry">
+        <div class="media-preview">
+            <div class="preview-overlay">
+                <span class="media-badge"></span>
+                <a class="preview-open" href="#" target="_blank" rel="noopener">Tam boy aç ↗</a>
+            </div>
+        </div>
+
+        <div class="media-content">
+            <div class="entry-heading">
+                <div>
+                    <p class="entry-index"></p>
+                    <h3 class="media-title"></h3>
+                </div>
+                <button class="delete-button" type="button" aria-label="Kaydı sil">Sil</button>
+            </div>
+
+            <p class="description"></p>
+
+            <dl class="metadata-list">
+                <div>
+                    <dt>Fotokapan</dt>
+                    <dd class="camera-id"></dd>
+                </div>
+                <div>
+                    <dt>Yakalanma</dt>
+                    <dd class="captured-at"></dd>
+                </div>
+                <div>
+                    <dt>Dosya boyutu</dt>
+                    <dd class="file-size"></dd>
+                </div>
+            </dl>
+
+            <a class="download-link" href="#">Orijinal dosyayı indir <span aria-hidden="true">↓</span></a>
+        </div>
+    </article>
+</template>
+
+<script src="/session.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

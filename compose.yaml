@@ -1,0 +1,40 @@
+services:
+  mongodb:
+    image: mongo:8.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-wildlife}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-this-password}
+      MONGO_INITDB_DATABASE: wildlife_media
+    ports:
+      - "127.0.0.1:${MONGO_HOST_PORT:-27019}:27017"
+    volumes:
+      - wildlife-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      PORT: 8081
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME:-wildlife}:${MONGO_ROOT_PASSWORD:-change-this-password}@mongodb:27017/wildlife_media?authSource=admin
+      MEDIA_STORAGE_PATH: /app/media-storage
+      APP_ADMIN_EMAIL: ${APP_ADMIN_EMAIL:-admin@wildlife.local}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-Admin123!}
+      APP_CUSTOMER_EMAIL: ${APP_CUSTOMER_EMAIL:-customer@wildlife.local}
+      APP_CUSTOMER_PASSWORD: ${APP_CUSTOMER_PASSWORD:-Customer123!}
+    ports:
+      - "8081:8081"
+    volumes:
+      - wildlife-media-files:/app/media-storage
+
+volumes:
+  wildlife-mongo-data:
+  wildlife-media-files:

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Wildlife Archive müşteri ve yönetici giriş ekranı.">
+    <title>Oturum Aç · Wildlife Archive</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+<main class="login-shell">
+    <section class="login-identity" aria-labelledby="loginTitle">
+        <a class="brand login-brand" href="/login.html">
+            <span class="brand-mark" aria-hidden="true">WA</span>
+            <span>
+                <strong>Wildlife Archive</strong>
+                <small>OMÜ IoT Lab</small>
+            </span>
+        </a>
+
+        <div>
+            <p class="kicker">Güvenli saha erişimi</p>
+            <h1 id="loginTitle">Fotokapanlarınıza<br>tek panelden ulaşın.</h1>
+            <p>
+                Canlı gözlem odalarını ve geçmiş medya kayıtlarını yalnızca size
+                tanımlanan fotokapanlar üzerinden görüntüleyin.
+            </p>
+        </div>
+
+        <footer>
+            <span>Spring Security oturum yönetimi</span>
+            <span>Parolalar BCrypt ile saklanır</span>
+        </footer>
+    </section>
+
+    <section class="login-panel" aria-label="Oturum açma formu">
+        <div class="section-number">01 / OTURUM</div>
+        <h2>Hesabınıza giriş yapın</h2>
+        <p class="login-panel-copy">Yönetici veya müşteri e-posta adresinizi kullanın.</p>
+
+        <form id="loginForm" class="login-form" action="/login" method="post">
+            <input id="csrfField" type="hidden" name="_csrf" value="">
+
+            <label class="field">
+                <span>E-posta adresi</span>
+                <input name="username" type="email" autocomplete="username" required
+                       placeholder="customer@wildlife.local">
+            </label>
+
+            <label class="field">
+                <span>Parola</span>
+                <input name="password" type="password" autocomplete="current-password" required
+                       placeholder="••••••••">
+            </label>
+
+            <button id="loginButton" class="primary-action" type="submit" disabled>
+                <span>Oturum aç</span>
+                <span aria-hidden="true">→</span>
+            </button>
+
+            <p id="loginMessage" class="form-message" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="login-demo-note">
+            <strong>Yerel demo hesapları</strong>
+            <span>Yönetici: admin@wildlife.local</span>
+            <span>Müşteri: customer@wildlife.local</span>
+            <small>Parolalar proje klasöründeki .env dosyasından yönetilir.</small>
+        </div>
+    </section>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>

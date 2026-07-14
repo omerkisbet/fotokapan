@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Wildlife Archive müşteri ve fotokapan erişim yönetimi.">
+    <title>Yönetim · Wildlife Archive</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-page">
+<div class="page-shell">
+    <header class="masthead">
+        <a class="brand" href="/" aria-label="Fotokapan Arşivi ana sayfa">
+            <span class="brand-mark" aria-hidden="true">WA</span>
+            <span>
+                <strong>Wildlife Archive</strong>
+                <small>OMÜ IoT Lab</small>
+            </span>
+        </a>
+
+        <div class="masthead-actions">
+            <nav class="primary-nav" aria-label="Ana navigasyon">
+                <a class="nav-link" href="/">Arşiv</a>
+                <a class="nav-link" href="/live.html">Canlı gözlem</a>
+                <a class="nav-link is-active" href="/admin.html">Yönetim</a>
+            </nav>
+            <div class="session-account" aria-label="Oturum bilgisi">
+                <span>
+                    <strong data-session-name>Hesap yükleniyor</strong>
+                    <small data-session-role>—</small>
+                </span>
+                <button class="session-logout" type="button" data-logout>Çıkış</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="admin-workspace">
+        <section class="admin-intro">
+            <div class="section-number">05 / ERİŞİM YÖNETİMİ</div>
+            <p class="kicker">Müşteri ve fotokapan eşleştirmesi</p>
+            <h1>Kim, hangi sahayı<br>görebilir?</h1>
+            <p>
+                Müşteri hesaplarını oluşturun ve her fotokapanı yalnızca yetkili hesaba atayın.
+                Müşteri oturumunda kamera, canlı yayın ve medya arşivi otomatik olarak filtrelenir.
+            </p>
+        </section>
+
+        <section class="admin-grid">
+            <article class="admin-section">
+                <header>
+                    <span>01</span>
+                    <div>
+                        <p class="kicker">Yeni hesap</p>
+                        <h2>Müşteri oluştur</h2>
+                    </div>
+                </header>
+
+                <form id="customerForm" class="admin-form">
+                    <label class="field">
+                        <span>Ad soyad / kurum</span>
+                        <input id="customerName" type="text" maxlength="120" required>
+                    </label>
+                    <label class="field">
+                        <span>E-posta</span>
+                        <input id="customerEmail" type="email" maxlength="180" required>
+                    </label>
+                    <label class="field">
+                        <span>İlk parola</span>
+                        <input id="customerPassword" type="password" minlength="8" maxlength="72" required>
+                    </label>
+                    <button class="primary-action" type="submit">
+                        <span>Müşteriyi oluştur</span>
+                        <span aria-hidden="true">→</span>
+                    </button>
+                    <p id="customerMessage" class="form-message" role="status" aria-live="polite"></p>
+                </form>
+            </article>
+
+            <article class="admin-section">
+                <header>
+                    <span>02</span>
+                    <div>
+                        <p class="kicker">Mevcut hesaplar</p>
+                        <h2>Müşteriler</h2>
+                    </div>
+                </header>
+                <div id="customerList" class="admin-list" aria-live="polite"></div>
+            </article>
+
+            <article class="admin-section admin-section-wide">
+                <header>
+                    <span>03</span>
+                    <div>
+                        <p class="kicker">Kamera yetkileri</p>
+                        <h2>Fotokapan atamaları</h2>
+                    </div>
+                </header>
+                <div id="cameraAssignments" class="assignment-list" aria-live="polite"></div>
+                <p id="assignmentMessage" class="form-message" role="status" aria-live="polite"></p>
+            </article>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span>OMÜ Sistemler ve Ağ Araştırma Laboratuvarı</span>
+        <span>Müşteri erişim yönetimi · 2026</span>
+    </footer>
+</div>
+
+<template id="customerItemTemplate">
+    <article class="admin-list-row">
+        <div>
+            <strong class="customer-name"></strong>
+            <span class="customer-email"></span>
+        </div>
+        <code class="customer-id"></code>
+    </article>
+</template>
+
+<template id="assignmentItemTemplate">
+    <article class="assignment-row">
+        <div>
+            <span class="assignment-code"></span>
+            <strong class="assignment-name"></strong>
+            <small class="assignment-location"></small>
+        </div>
+        <label>
+            <span>Müşteri</span>
+            <select class="assignment-select"></select>
+        </label>
+        <button class="filter-action assignment-save" type="button">Atamayı kaydet</button>
+    </article>
+</template>
+
+<script src="/session.js"></script>
+<script src="/admin.js"></script>
+</body>
+</html>
